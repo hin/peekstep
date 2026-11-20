@@ -27,6 +27,9 @@ void setWindowIdentityHints();
 // provide it itself (Linux X11). Windows uses the icon in the exe, macOS the
 // one in the app bundle, Wayland the one named by the menu entry.
 void setWindowIcon(GLFWwindow* window);
+// macOS: shows an error in an alert window. Does nothing elsewhere (Windows
+// already shows a message box, Linux prints to the terminal).
+void showErrorDialog(const std::string& text);
 
 // Short description of the platform the binary was built for, e.g. "Windows x64".
 const char* platformName();

@@ -46,6 +46,7 @@ void openUrl(const std::string& url)
 #ifndef __APPLE__
 void installOpenFileHandler() {}
 std::vector<std::string> takeOpenedFiles() { return {}; }
+void showErrorDialog(const std::string&) {}
 #endif
 
 void setWindowIdentityHints()

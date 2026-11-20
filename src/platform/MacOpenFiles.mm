@@ -41,6 +41,20 @@ void installOpenFileHandler()
         class_addMethod(cls, @selector(application:openFiles:), (IMP)openFiles, "v@:@@");
 }
 
+void showErrorDialog(const std::string& text)
+{
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp activateIgnoringOtherApps:YES];
+        NSAlert* alert = [[NSAlert alloc] init];
+        alert.alertStyle = NSAlertStyleCritical;
+        alert.messageText = @"Peekstep";
+        alert.informativeText = [NSString stringWithUTF8String:text.c_str()];
+        [alert runModal];
+        [alert release];
+    }
+}
+
 std::vector<std::string> takeOpenedFiles()
 {
     std::lock_guard lock(gMutex);

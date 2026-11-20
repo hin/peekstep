@@ -61,6 +61,7 @@ void Viewer::initWindow()
     // breaks relative file names given on the command line.
     glfwInitHint(GLFW_COCOA_CHDIR_RESOURCES, GLFW_FALSE);
     installOpenFileHandler();
+    useLinkedVulkanLoader();
     if (!glfwInit())
         throw std::runtime_error("Could not initialize the window system");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
