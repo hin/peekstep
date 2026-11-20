@@ -6,6 +6,7 @@
   <key>CFBundleDisplayName</key><string>Peekstep</string>
   <key>CFBundleIdentifier</key><string>io.github.hin.peekstep</string>
   <key>CFBundleExecutable</key><string>peekstep</string>
+  <key>CFBundleIconFile</key><string>Peekstep</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>@VERSION@</string>
   <key>CFBundleShortVersionString</key><string>@VERSION@</string>

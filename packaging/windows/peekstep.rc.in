@@ -1,0 +1,32 @@
+// Peekstep Windows resources. CMake fills in the paths and version.
+#include <winver.h>
+
+// GLFW looks for an icon resource with this name for its windows;
+// Explorer uses the first icon in the exe.
+GLFW_ICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/packaging/windows/peekstep.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Peekstep"
+      VALUE "FileDescription", "Peekstep STEP viewer"
+      VALUE "FileVersion", "@PROJECT_VERSION@"
+      VALUE "InternalName", "peekstep"
+      VALUE "LegalCopyright", "BSD 2-Clause license"
+      VALUE "OriginalFilename", "peekstep.exe"
+      VALUE "ProductName", "Peekstep"
+      VALUE "ProductVersion", "@PROJECT_VERSION@"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

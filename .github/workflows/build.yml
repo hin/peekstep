@@ -157,10 +157,12 @@ jobs:
           mkdir -p dist "stage/$name"
           cp build/linux/peekstep packaging/linux/install.sh packaging/linux/peekstep.desktop \
              packaging/linux/peekstep-step.xml README.md LICENSE "stage/$name/"
+          cp -r packaging/linux/icons "stage/$name/"
           packaging/collect-licenses.sh build/linux/vcpkg_installed/x64-linux-release "stage/$name/THIRD-PARTY-LICENSES.txt"
           # Try the installer in a throwaway home directory.
           HOME="$RUNNER_TEMP/home" "stage/$name/install.sh" --no-default
           "$RUNNER_TEMP/home/.local/bin/peekstep" --info tests/data/test_board.step > /dev/null
+          test -f "$RUNNER_TEMP/home/.local/share/icons/hicolor/256x256/apps/peekstep.png"
           HOME="$RUNNER_TEMP/home" "stage/$name/install.sh" --uninstall
           tar -C stage -czf "dist/$name.tar.gz" "$name"
           ls -l dist

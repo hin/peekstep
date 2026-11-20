@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+struct GLFWwindow;
+
 namespace peekstep {
 
 // Opens a URL in the user's web browser. Does nothing if that fails.
@@ -16,6 +18,15 @@ void installOpenFileHandler();
 
 // Files that arrived through the handler above since the last call.
 std::vector<std::string> takeOpenedFiles();
+
+// Window hints that tie the window to the app's menu entry and icon
+// (Wayland app id, X11 class). Call after glfwInit(), before creating the window.
+void setWindowIdentityHints();
+
+// Sets the window's title bar / task switcher icon where the app has to
+// provide it itself (Linux X11). Windows uses the icon in the exe, macOS the
+// one in the app bundle, Wayland the one named by the menu entry.
+void setWindowIcon(GLFWwindow* window);
 
 // Short description of the platform the binary was built for, e.g. "Windows x64".
 const char* platformName();

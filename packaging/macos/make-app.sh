@@ -14,6 +14,7 @@ app="$out/Peekstep.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resources/vulkan/icd.d"
 cp "$exe" "$app/Contents/MacOS/peekstep"
+cp "$here/Peekstep.icns" "$app/Contents/Resources/Peekstep.icns"
 
 # The Vulkan loader, under the name the binary links to (@rpath/libvulkan.1.x.y.dylib).
 loader=$(otool -L "$exe" | awk '/@rpath\/libvulkan/ {print $1}' | sed 's|@rpath/||')

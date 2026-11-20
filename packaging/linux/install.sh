@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs Peekstep for the current user (no root needed):
-#   ~/.local/bin/peekstep, a menu entry, and the STEP file type.
+#   ~/.local/bin/peekstep, a menu entry with icon, and the STEP file type.
 # Optionally makes Peekstep the default app for STEP files.
 #
 #   ./install.sh               install, ask about the default app
@@ -14,10 +14,12 @@ data="${XDG_DATA_HOME:-$HOME/.local/share}"
 bin="$HOME/.local/bin"
 apps="$data/applications"
 mime="$data/mime"
+icons="$data/icons/hicolor"
 
 refresh() {
     command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$apps" || true
     command -v update-mime-database >/dev/null 2>&1 && update-mime-database "$mime" || true
+    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$icons" || true
 }
 
 mode=ask
@@ -26,6 +28,7 @@ case "${1:-}" in
     --no-default) mode=no ;;
     --uninstall)
         rm -f "$bin/peekstep" "$apps/peekstep.desktop" "$mime/packages/peekstep-step.xml"
+        rm -f "$icons"/*/apps/peekstep.png "$icons"/scalable/apps/peekstep.svg
         refresh
         echo "Peekstep removed."
         exit 0 ;;
@@ -38,6 +41,10 @@ install -m 755 "$here/peekstep" "$bin/peekstep"
 # Absolute path, so the menu entry works even if ~/.local/bin is not on PATH.
 sed "s|^Exec=peekstep|Exec=\"$bin/peekstep\"|" "$here/peekstep.desktop" > "$apps/peekstep.desktop"
 install -m 644 "$here/peekstep-step.xml" "$mime/packages/peekstep-step.xml"
+(cd "$here/icons/hicolor" && for f in */apps/peekstep.*; do
+    mkdir -p "$icons/$(dirname "$f")"
+    install -m 644 "$f" "$icons/$f"
+done)
 refresh
 echo "Installed $bin/peekstep and a menu entry."
 
