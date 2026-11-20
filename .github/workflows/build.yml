@@ -28,14 +28,17 @@ jobs:
           - name: Linux
             os: ubuntu-22.04
             preset: linux
+            package: linux-x64
             shell: bash
           - name: macOS
             os: macos-latest
             preset: macos
+            package: macos-arm64
             shell: bash
           - name: Windows (MSYS2 UCRT64)
             os: windows-latest
             preset: mingw
+            package: windows-x64
             shell: msys2 {0}
     defaults:
       run:
@@ -138,15 +141,6 @@ jobs:
           # On Windows the app has no console, so only check that it loads the file.
           "$exe" --info tests/data/test_board.step
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: peekstep-${{ matrix.preset }}
-          path: |
-            build/${{ matrix.preset }}/peekstep
-            build/${{ matrix.preset }}/peekstep.exe
-          if-no-files-found: error
-
       # Release packages. Built on every run, so packaging problems show up
       # in pull requests and not only when tagging.
       - name: Package (Linux)
@@ -224,7 +218,8 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: package-${{ matrix.preset }}
+          # Named like the files inside, e.g. peekstep-0.1.0-windows-x64.
+          name: peekstep-${{ steps.version.outputs.version }}-${{ matrix.package }}
           path: dist/*
           if-no-files-found: error
 
@@ -238,7 +233,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: package-*
+          pattern: peekstep-*
           path: dist
           merge-multiple: true
 
