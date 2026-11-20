@@ -110,7 +110,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ steps.toolchain.outputs.key }}
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*') }}-${{ steps.toolchain.outputs.key }}
           restore-keys: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
 
       - name: Configure
@@ -122,7 +122,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ steps.toolchain.outputs.key }}
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*') }}-${{ steps.toolchain.outputs.key }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -174,11 +174,11 @@ jobs:
           echo "$MOLTENVK_SHA256  $RUNNER_TEMP/moltenvk.tar" | shasum -a 256 -c -
           tar -xf "$RUNNER_TEMP/moltenvk.tar" -C "$RUNNER_TEMP"
           mkdir -p dist stage
-          packaging/macos/make-app.sh build/macos/peekstep build/macos/vcpkg_installed/arm64-osx-release \
+          packaging/macos/make-app.sh build/macos/peekstep build/macos/vcpkg_installed/arm64-osx-peekstep \
             "$RUNNER_TEMP/MoltenVK" "$v" stage
           otool -L stage/Peekstep.app/Contents/MacOS/peekstep
           stage/Peekstep.app/Contents/MacOS/peekstep --info tests/data/test_board.step > /dev/null
-          packaging/collect-licenses.sh build/macos/vcpkg_installed/arm64-osx-release stage/THIRD-PARTY-LICENSES.txt \
+          packaging/collect-licenses.sh build/macos/vcpkg_installed/arm64-osx-peekstep stage/THIRD-PARTY-LICENSES.txt \
             "MoltenVK=$RUNNER_TEMP/MoltenVK/LICENSE"
           cp stage/THIRD-PARTY-LICENSES.txt LICENSE stage/Peekstep.app/Contents/Resources/
           codesign --force --sign - stage/Peekstep.app

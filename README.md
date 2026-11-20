@@ -27,7 +27,7 @@ Get the latest version from the
   which installs Peekstep for your user (no admin rights) with a Start menu
   entry, an uninstaller and an optional checkbox to open `.step`/`.stp` files
   with Peekstep.
-- **macOS (Apple Silicon):** unzip `Peekstep-<version>-macos-arm64.zip` and
+- **macOS (Apple Silicon, macOS 13 or newer):** unzip `Peekstep-<version>-macos-arm64.zip` and
   move Peekstep to Applications. The app is not signed by Apple, so the first
   time you open it, right-click it and choose Open (or allow it under System
   Settings, Privacy & Security). Peekstep shows up under "Open With" for STEP
