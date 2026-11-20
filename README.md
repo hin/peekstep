@@ -8,8 +8,37 @@ export, straight from the file browser or the command line.
 - Shows the colors from the file, plus a list of colors and materials.
 - Rotate, pan, zoom and standard views. Nothing else (yet).
 
+> **AI-developed software.** Peekstep was written almost entirely by an AI
+> coding assistant (Claude, by Anthropic), directed and reviewed by a human.
+> It works for its author, but the code has not had the kind of line-by-line
+> human review a hand-written project gets. Use it at your own risk, as the
+> license says.
+
 Built with C++20, [OpenCASCADE](https://dev.opencascade.org/) for reading
 STEP, Vulkan for drawing, and GLFW + Dear ImGui for the window and UI.
+
+## Download
+
+Get the latest version from the
+[Releases page](https://github.com/hin/peekstep/releases).
+
+- **Windows (x64):** `peekstep-<version>-windows-x64.exe` is the program
+  itself; download it and run it. Or use `peekstep-<version>-windows-x64-setup.exe`,
+  which installs Peekstep for your user (no admin rights) with a Start menu
+  entry, an uninstaller and an optional checkbox to open `.step`/`.stp` files
+  with Peekstep.
+- **macOS (Apple Silicon, macOS 13 or newer):** unzip `Peekstep-<version>-macos-arm64.zip` and
+  move Peekstep to Applications. The app is not signed by Apple, so the first
+  time you open it, right-click it and choose Open (or allow it under System
+  Settings, Privacy & Security). Peekstep shows up under "Open With" for STEP
+  files. To make it the double-click app, use Get Info on a `.step` file,
+  choose Peekstep under "Open with" and click Change All.
+- **Linux (x64):** unpack `peekstep-<version>-linux-x64.tar.gz` and run
+  `peekstep`. Or run `./install.sh` from that folder: it installs Peekstep to
+  `~/.local/bin` with a menu entry, and asks whether it should become the
+  default app for STEP files (`./install.sh --uninstall` removes it again).
+  Built on Ubuntu 22.04, so it runs on distributions with glibc 2.35 or newer.
+  It needs a Vulkan driver, which most desktop installs have.
 
 ## Usage
 
@@ -29,6 +58,7 @@ You can also drop a file on the window.
 | 0 | Iso view |
 | 1 / 3 / 7 | Front / right / top (with Ctrl: back / left / bottom) |
 | Tab | Hide or show the panel |
+| F1 | About Peekstep |
 | Esc | Quit |
 
 Set `PEEKSTEP_VALIDATION=1` to turn on the Vulkan validation layer.
@@ -88,12 +118,30 @@ cmake --preset macos
 cmake --build --preset macos
 ```
 
-Vulkan runs on top of MoltenVK. For now the Vulkan loader and MoltenVK must be
-installed separately (for example from the LunarG Vulkan SDK).
+Vulkan runs on top of MoltenVK. To run the plain binary from the build
+folder, MoltenVK must be installed (for example from the LunarG Vulkan SDK).
+The release app bundles the Vulkan loader and MoltenVK; see
+`packaging/macos/make-app.sh`.
+
+## Making a release
+
+1. Set the new version in `project(peekstep VERSION ...)` in `CMakeLists.txt`
+   (and `version-string` in `vcpkg.json`), and merge that to `main`.
+2. Tag it and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+3. CI builds the packages for all platforms and creates a draft release with
+   them. Check the notes on the Releases page and publish it.
+
+CI refuses to build a release when the tag does not match the version in
+`CMakeLists.txt`. Packaging files are in `packaging/`.
 
 ## License
 
 Peekstep is under the BSD 2-Clause license, see [LICENSE](LICENSE).
 
 Binaries also contain OpenCASCADE (LGPL 2.1 with an exception), GLFW (zlib),
-Dear ImGui (MIT) and their dependencies, under their own licenses.
+Dear ImGui (MIT), the Vulkan loader (Apache 2.0), on macOS MoltenVK (Apache
+2.0), and their dependencies, under their own licenses. Each release package
+includes these licenses in `THIRD-PARTY-LICENSES.txt`. OpenCASCADE is linked
+statically; to rebuild Peekstep against a modified OpenCASCADE, build it from
+this repository as described above, where the OpenCASCADE version is pinned
+through vcpkg.

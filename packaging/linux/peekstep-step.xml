@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- STEP files, for systems whose shared-mime-info does not know them yet. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="model/step">
+    <comment>STEP 3D model</comment>
+    <glob pattern="*.step" case-sensitive="false"/>
+    <glob pattern="*.stp" case-sensitive="false"/>
+    <glob pattern="*.p21" case-sensitive="false"/>
+  </mime-type>
+</mime-info>

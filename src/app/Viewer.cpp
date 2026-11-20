@@ -1,6 +1,7 @@
 // Peekstep - window, input, UI and background loading.
 #include "app/Viewer.h"
 
+#include "platform/Platform.h"
 #include "render/Renderer.h"
 
 #include <GLFW/glfw3.h>
@@ -56,6 +57,10 @@ Viewer::~Viewer()
 
 void Viewer::initWindow()
 {
+    // Inside an app bundle GLFW would change to Contents/Resources, which
+    // breaks relative file names given on the command line.
+    glfwInitHint(GLFW_COCOA_CHDIR_RESOURCES, GLFW_FALSE);
+    installOpenFileHandler();
     if (!glfwInit())
         throw std::runtime_error("Could not initialize the window system");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -164,7 +169,11 @@ void Viewer::handleInput()
             camera_.setView(io.KeyCtrl ? Camera::View::Bottom : Camera::View::Top);
         if (ImGui::IsKeyPressed(ImGuiKey_Tab))
             showPanel_ = !showPanel_;
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Q)))
+        if (ImGui::IsKeyPressed(ImGuiKey_F1))
+            showAbout_ = !showAbout_;
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape) && showAbout_)
+            showAbout_ = false;
+        else if (ImGui::IsKeyPressed(ImGuiKey_Escape) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Q)))
             glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
 }
@@ -193,6 +202,11 @@ void Viewer::drawUi()
                                  | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing;
     if (ImGui::Begin("Peekstep", nullptr, flags)) {
         ImGui::TextUnformatted(fileName(path_).c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("?"))
+            showAbout_ = !showAbout_;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("About Peekstep (F1)");
 
         if (!error_.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 120, 110, 255));
@@ -252,7 +266,7 @@ void Viewer::drawUi()
                                        "Wheel: zoom\n"
                                        "F: fit   0: iso   1/3/7: front/right/top\n"
                                        "Ctrl+1/3/7: back/left/bottom\n"
-                                       "Tab: hide panel   Esc: quit");
+                                       "Tab: hide panel   F1: about   Esc: quit");
             }
         }
     }
@@ -276,6 +290,61 @@ void Viewer::drawLoadingOverlay()
     const ImVec2 size = ImGui::CalcTextSize(text);
     ImGui::GetForegroundDrawList()->AddText(ImVec2(center.x - size.x * 0.5f, center.y + 36.0f * scale),
                                             IM_COL32(220, 220, 230, 255), text);
+}
+
+// "Peekstep vX.Y.Z" in the lower right corner; clicking it opens About.
+void Viewer::drawVersionLabel()
+{
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float pad = 6.0f * ImGui::GetStyle().FontScaleDpi;
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x - pad, vp->Pos.y + vp->Size.y - pad), ImGuiCond_Always,
+                            ImVec2(1.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground
+                                 | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings
+                                 | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##version", nullptr, flags)) {
+        const char* label = "Peekstep v" PEEKSTEP_VERSION;
+        const ImVec2 size = ImGui::CalcTextSize(label);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        if (ImGui::InvisibleButton("##about", size))
+            showAbout_ = !showAbout_;
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImGui::GetWindowDrawList()->AddText(pos, hovered ? IM_COL32(230, 230, 240, 255) : IM_COL32(140, 140, 150, 200),
+                                            label);
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+void Viewer::drawAbout()
+{
+    if (!showAbout_)
+        return;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f), ImGuiCond_Always,
+                            ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.95f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+                                 | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
+    if (ImGui::Begin("About Peekstep", &showAbout_, flags)) {
+        ImGui::TextUnformatted("Peekstep");
+        ImGui::TextUnformatted("A small, fast-starting STEP file viewer.");
+        ImGui::Spacing();
+        ImGui::Text("Version %s", PEEKSTEP_VERSION);
+        ImGui::TextDisabled("Build %s, %s", PEEKSTEP_BUILD, platformName());
+        ImGui::Spacing();
+        const char* url = "https://github.com/hin/peekstep";
+        if (ImGui::TextLink(url))
+            openUrl(url);
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Developed with AI assistance.");
+        ImGui::TextDisabled("BSD 2-Clause license. Uses OpenCASCADE, GLFW,\n"
+                            "Dear ImGui and Vulkan; see the license files.");
+    }
+    ImGui::End();
 }
 
 void Viewer::updateTitle()
@@ -305,12 +374,19 @@ int Viewer::run()
         else
             glfwPollEvents();
 
+        // Files opened from Finder on macOS (empty elsewhere). Only the last
+        // one is shown; open() ignores it while another file is loading.
+        const std::vector<std::string> opened = takeOpenedFiles();
+        if (!opened.empty())
+            open(opened.back());
         pollLoad();
 
         renderer_->newImGuiFrame();
         handleInput();
         drawUi();
+        drawVersionLabel();
         drawLoadingOverlay();
+        drawAbout();
         ImGui::Render();
 
         int w = 0, h = 0;

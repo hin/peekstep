@@ -44,6 +44,8 @@ private:
     void handleInput();
     void drawUi();
     void drawLoadingOverlay();
+    void drawAbout();
+    void drawVersionLabel();
     void updateTitle();
 
     static void onDrop(GLFWwindow* window, int count, const char** paths);
@@ -61,6 +63,7 @@ private:
     size_t triangleCount_ = 0;
     double loadSeconds_ = 0;
     bool showPanel_ = true;
+    bool showAbout_ = false;
 };
 
 } // namespace peekstep

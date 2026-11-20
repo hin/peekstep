@@ -31,11 +31,12 @@
     },
     {
       "name": "macos",
-      "displayName": "macOS, Apple Silicon (static deps)",
+      "displayName": "macOS 13+, Apple Silicon (static deps)",
       "inherits": "base",
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "arm64-osx-release",
-        "VCPKG_HOST_TRIPLET": "arm64-osx-release"
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-peekstep",
+        "VCPKG_HOST_TRIPLET": "arm64-osx-peekstep",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0"
       }
     }
   ],
