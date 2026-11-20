@@ -1,0 +1,116 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Keep in sync with "builtin-baseline" in vcpkg.json.
+  VCPKG_COMMIT: 74f5ea45ca78988784b810ad9bbb148ea7ff76d8
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+            preset: linux
+            shell: bash
+          - name: macOS
+            os: macos-latest
+            preset: macos
+            shell: bash
+          - name: Windows (MSYS2 UCRT64)
+            os: windows-latest
+            preset: mingw
+            shell: msys2 {0}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config bison \
+            libxinerama-dev libxcursor-dev libxrandr-dev libxi-dev xorg-dev libgl1-mesa-dev
+
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git
+          pacboy: gcc:p cmake:p ninja:p pkgconf:p
+
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout "$VCPKG_COMMIT"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+            echo "VCPKG_ROOT=$(cygpath -w "$RUNNER_TEMP/vcpkg")" >> "$GITHUB_ENV"
+            echo "VCPKG_BINARY_SOURCES=clear;files,$(cygpath -w "$RUNNER_TEMP/vcpkg-cache"),readwrite" >> "$GITHUB_ENV"
+          else
+            "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+            echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+            echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-cache,readwrite" >> "$GITHUB_ENV"
+          fi
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+
+      # Building OpenCASCADE takes a long time; reuse built packages between runs.
+      - name: Restore vcpkg packages
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      # Saved even if a later step fails, so the next run doesn't rebuild everything.
+      - name: Save vcpkg packages
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Smoke test
+        run: |
+          exe=build/${{ matrix.preset }}/peekstep
+          [ "$RUNNER_OS" = "Windows" ] && exe=$exe.exe
+          if [ "$RUNNER_OS" = "Linux" ]; then ldd "$exe"; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then otool -L "$exe"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then ldd "$exe" || true; fi
+          ls -l "$exe"
+          # On Windows the app has no console, so only check that it loads the file.
+          "$exe" --info tests/data/test_board.step
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: peekstep-${{ matrix.preset }}
+          path: |
+            build/${{ matrix.preset }}/peekstep
+            build/${{ matrix.preset }}/peekstep.exe
+          if-no-files-found: error
