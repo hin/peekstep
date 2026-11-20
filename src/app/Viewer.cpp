@@ -65,9 +65,11 @@ void Viewer::initWindow()
     if (!glfwInit())
         throw std::runtime_error("Could not initialize the window system");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    setWindowIdentityHints();
     window_ = glfwCreateWindow(1280, 800, "Peekstep", nullptr, nullptr);
     if (!window_)
         throw std::runtime_error("Could not create a window");
+    setWindowIcon(window_);
     glfwSetWindowUserPointer(window_, this);
     glfwSetDropCallback(window_, onDrop);
     glfwSetFramebufferSizeCallback(window_, onFramebufferSize);

@@ -34,6 +34,13 @@ add_executable(peekstep
   src/render/Renderer.cpp
   src/step/StepLoader.cpp
 )
+if(WIN32)
+  # Icon in the exe (Explorer, taskbar; GLFW uses the GLFW_ICON resource for
+  # its windows). Absolute path, so the resource compiler finds it from the build dir.
+  enable_language(RC)
+  configure_file(packaging/windows/peekstep.rc.in "${CMAKE_CURRENT_BINARY_DIR}/peekstep.rc" @ONLY)
+  target_sources(peekstep PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/peekstep.rc")
+endif()
 if(APPLE)
   target_sources(peekstep PRIVATE src/platform/MacOpenFiles.mm)
   target_link_libraries(peekstep PRIVATE "-framework Cocoa")

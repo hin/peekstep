@@ -27,6 +27,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=yes
 UninstallDisplayIcon={app}\peekstep.exe
+SetupIconFile=peekstep.ico
 LicenseFile={#SourceDir}\LICENSE.txt
 OutputDir={#OutputDir}
 OutputBaseFilename=peekstep-{#AppVersion}-windows-x64-setup
