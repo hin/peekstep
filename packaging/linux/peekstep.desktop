@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Peekstep
+GenericName=STEP Viewer
+Comment=Take a quick look at STEP 3D model files
+Exec=peekstep %f
+Terminal=false
+Categories=Graphics;3DGraphics;Viewer;Engineering;
+MimeType=model/step;
+Keywords=STEP;STP;CAD;3D;KiCad;

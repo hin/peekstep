@@ -3,12 +3,17 @@ name: Build
 on:
   push:
     branches: [main]
+    # Pushing a version tag (v0.1.0) also builds the packages into a draft release.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 env:
   # Keep in sync with "builtin-baseline" in vcpkg.json.
   VCPKG_COMMIT: 74f5ea45ca78988784b810ad9bbb148ea7ff76d8
+  # Bundled into the macOS app (from the KhronosGroup/MoltenVK release).
+  MOLTENVK_VERSION: v1.4.0
+  MOLTENVK_SHA256: f4feaf6a4988352de8e6d49874ccc1cd6a45021e3cb476e8531bef7ecc73e93a
 
 jobs:
   build:
@@ -18,8 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The oldest supported runner, so the binary also runs on older
+          # distributions (it needs the glibc version of the build machine).
           - name: Linux
-            os: ubuntu-24.04
+            os: ubuntu-22.04
             preset: linux
             shell: bash
           - name: macOS
@@ -36,6 +43,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's/^project(peekstep VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "Version $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in CMakeLists.txt ($version)"
+            exit 1
+          fi
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
@@ -127,3 +145,99 @@ jobs:
             build/${{ matrix.preset }}/peekstep
             build/${{ matrix.preset }}/peekstep.exe
           if-no-files-found: error
+
+      # Release packages. Built on every run, so packaging problems show up
+      # in pull requests and not only when tagging.
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          v=${{ steps.version.outputs.version }}
+          name=peekstep-$v-linux-x64
+          mkdir -p dist "stage/$name"
+          cp build/linux/peekstep packaging/linux/install.sh packaging/linux/peekstep.desktop \
+             packaging/linux/peekstep-step.xml README.md LICENSE "stage/$name/"
+          packaging/collect-licenses.sh build/linux/vcpkg_installed/x64-linux-release "stage/$name/THIRD-PARTY-LICENSES.txt"
+          # Try the installer in a throwaway home directory.
+          HOME="$RUNNER_TEMP/home" "stage/$name/install.sh" --no-default
+          "$RUNNER_TEMP/home/.local/bin/peekstep" --info tests/data/test_board.step > /dev/null
+          HOME="$RUNNER_TEMP/home" "stage/$name/install.sh" --uninstall
+          tar -C stage -czf "dist/$name.tar.gz" "$name"
+          ls -l dist
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          v=${{ steps.version.outputs.version }}
+          curl -fsSL -o "$RUNNER_TEMP/moltenvk.tar" \
+            "https://github.com/KhronosGroup/MoltenVK/releases/download/$MOLTENVK_VERSION/MoltenVK-macos.tar"
+          echo "$MOLTENVK_SHA256  $RUNNER_TEMP/moltenvk.tar" | shasum -a 256 -c -
+          tar -xf "$RUNNER_TEMP/moltenvk.tar" -C "$RUNNER_TEMP"
+          mkdir -p dist stage
+          packaging/macos/make-app.sh build/macos/peekstep build/macos/vcpkg_installed/arm64-osx-release \
+            "$RUNNER_TEMP/MoltenVK" "$v" stage
+          otool -L stage/Peekstep.app/Contents/MacOS/peekstep
+          stage/Peekstep.app/Contents/MacOS/peekstep --info tests/data/test_board.step > /dev/null
+          packaging/collect-licenses.sh build/macos/vcpkg_installed/arm64-osx-release stage/THIRD-PARTY-LICENSES.txt \
+            "MoltenVK=$RUNNER_TEMP/MoltenVK/LICENSE"
+          cp stage/THIRD-PARTY-LICENSES.txt LICENSE stage/Peekstep.app/Contents/Resources/
+          codesign --force --sign - stage/Peekstep.app
+          ditto -c -k --keepParent stage/Peekstep.app "dist/Peekstep-$v-macos-arm64.zip"
+          ls -l dist
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          v=${{ steps.version.outputs.version }}
+          mkdir -p dist stage
+          cp build/mingw/peekstep.exe "dist/peekstep-$v-windows-x64.exe"
+          cp build/mingw/peekstep.exe stage/
+          cp LICENSE stage/LICENSE.txt
+          cp README.md stage/README.txt
+          packaging/collect-licenses.sh build/mingw/vcpkg_installed/x64-mingw-static-release stage/THIRD-PARTY-LICENSES.txt
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$iscc" ]; then
+            /c/ProgramData/chocolatey/bin/choco.exe install innosetup -y --no-progress
+          fi
+          # Keep MSYS2 from turning the /Q and /D options into paths.
+          MSYS2_ARG_CONV_EXCL='*' "$iscc" /Q "/DAppVersion=$v" "/DSourceDir=$(cygpath -w "$PWD/stage")" \
+            "/DOutputDir=$(cygpath -w "$PWD/dist")" "$(cygpath -w packaging/windows/peekstep.iss)"
+          ls -l dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.preset }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      # A draft, so the notes can be checked before anyone sees it.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          cat > notes.md <<'NOTES'
+          ## Downloads
+
+          - **Windows:** `peekstep-*-windows-x64.exe` is the program itself; download and run it. `*-setup.exe` installs it for your user, with a Start menu entry and an optional checkbox to open .step/.stp files with Peekstep.
+          - **macOS (Apple Silicon):** unzip `Peekstep-*-macos-arm64.zip` and move Peekstep to Applications. The app is not signed by Apple, so the first time, right-click it and choose Open (or allow it under System Settings, Privacy & Security). To open STEP files with a double-click, use Get Info on a .step file, pick Peekstep under "Open with" and click Change All.
+          - **Linux (x64):** unpack `peekstep-*-linux-x64.tar.gz` and run `peekstep`, or run `./install.sh` to add it to your menu (it asks whether to make it the default for STEP files). Needs a Vulkan driver.
+
+          Peekstep was developed with AI assistance; see the README.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+            --title "Peekstep ${GITHUB_REF_NAME#v}" --notes-file notes.md --generate-notes

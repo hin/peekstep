@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Peekstep</string>
+  <key>CFBundleDisplayName</key><string>Peekstep</string>
+  <key>CFBundleIdentifier</key><string>io.github.hin.peekstep</string>
+  <key>CFBundleExecutable</key><string>peekstep</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>@VERSION@</string>
+  <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>LSMinimumSystemVersion</key><string>@MINOS@</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>BSD 2-Clause license. Developed with AI assistance.</string>
+
+  <!-- STEP has no system-defined type on macOS, so declare one. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>org.iso.step</string>
+      <key>UTTypeDescription</key><string>STEP 3D model</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.3d-content</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>step</string><string>stp</string><string>p21</string></array>
+        <key>public.mime-type</key><array><string>model/step</string></array>
+      </dict>
+    </dict>
+  </array>
+
+  <!-- "Alternate": Peekstep shows up under Open With, but does not take
+       over double-click unless the user picks it (Get Info, Change All). -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>STEP 3D model</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>org.iso.step</string></array>
+    </dict>
+  </array>
+</dict>
+</plist>
