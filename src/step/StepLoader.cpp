@@ -440,6 +440,25 @@ Model loadStep(const std::string& path, LoadProgress* progress)
         }
     }
 
+    // Put see-through triangles (such as KiCad's solder mask and silkscreen)
+    // after the opaque ones, so the renderer can draw them last with blending.
+    {
+        std::vector<uint32_t> seeThrough;
+        size_t out = 0;
+        for (size_t i = 0; i < model.indices.size(); i += 3) {
+            const uint32_t* t = &model.indices[i];
+            if ((model.vertices[t[0]].color >> 24) < 255) {
+                seeThrough.insert(seeThrough.end(), t, t + 3);
+            } else {
+                model.indices[out++] = t[0];
+                model.indices[out++] = t[1];
+                model.indices[out++] = t[2];
+            }
+        }
+        model.opaqueIndexCount = out;
+        std::copy(seeThrough.begin(), seeThrough.end(), model.indices.begin() + ptrdiff_t(out));
+    }
+
     for (const auto& [packed, count] : colorFaces) {
         ColorInfo ci;
         for (int i = 0; i < 4; ++i)

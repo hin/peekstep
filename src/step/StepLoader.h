@@ -30,7 +30,8 @@ struct MaterialInfo {
 
 struct Model {
     std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+    std::vector<uint32_t> indices;  // opaque triangles first, then see-through ones
+    size_t opaqueIndexCount = 0;    // indices[0, opaqueIndexCount) are opaque
     std::array<float, 3> bboxMin{0, 0, 0};
     std::array<float, 3> bboxMax{0, 0, 0};
 

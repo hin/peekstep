@@ -86,6 +86,7 @@ Renderer::~Renderer()
     }
     destroySwapchain();
     vkDestroyPipeline(device_, pipeline_, nullptr);
+    vkDestroyPipeline(device_, blendPipeline_, nullptr);
     vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     vkDestroyRenderPass(device_, renderPass_, nullptr);
     vkDestroyCommandPool(device_, commandPool_, nullptr);
@@ -534,6 +535,20 @@ void Renderer::createPipeline()
     ci.renderPass = renderPass_;
     check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &ci, nullptr, &pipeline_), "vkCreateGraphicsPipelines");
 
+    // See-through surfaces (KiCad solder mask and silkscreen) blend over what
+    // is behind them. They test depth against the opaque surfaces but do not
+    // write it, so see-through layers do not hide each other. They are not
+    // sorted; with similar colors (top and bottom mask) the order hardly shows.
+    depth.depthWriteEnable = VK_FALSE;
+    blendAttachment.blendEnable = VK_TRUE;
+    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &ci, nullptr, &blendPipeline_), "vkCreateGraphicsPipelines");
+
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
 }
@@ -697,6 +712,7 @@ void Renderer::uploadModel(const Model& model)
     destroyBuffer(vertexBuffer_);
     destroyBuffer(indexBuffer_);
     indexCount_ = 0;
+    opaqueIndexCount_ = 0;
     if (model.indices.empty())
         return;
     vertexBuffer_ = uploadToDevice(model.vertices.data(), model.vertices.size() * sizeof(Vertex),
@@ -704,6 +720,7 @@ void Renderer::uploadModel(const Model& model)
     indexBuffer_ = uploadToDevice(model.indices.data(), model.indices.size() * sizeof(uint32_t),
                                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     indexCount_ = uint32_t(model.indices.size());
+    opaqueIndexCount_ = uint32_t(model.opaqueIndexCount);
 }
 
 void Renderer::newImGuiFrame()
@@ -770,7 +787,12 @@ void Renderer::drawFrame(const Mat4& viewProj, const Vec3& viewDir)
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer_.buffer, &offset);
         vkCmdBindIndexBuffer(cmd, indexBuffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmd, indexCount_, 1, 0, 0, 0);
+        if (opaqueIndexCount_ > 0)
+            vkCmdDrawIndexed(cmd, opaqueIndexCount_, 1, 0, 0, 0);
+        if (indexCount_ > opaqueIndexCount_) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blendPipeline_);
+            vkCmdDrawIndexed(cmd, indexCount_ - opaqueIndexCount_, 1, opaqueIndexCount_, 0, 0);
+        }
     }
 
     if (drawData)

@@ -93,7 +93,8 @@ private:
 
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
-    VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipeline pipeline_ = VK_NULL_HANDLE;      // opaque triangles
+    VkPipeline blendPipeline_ = VK_NULL_HANDLE; // see-through triangles, drawn after the opaque ones
 
     static constexpr int kFramesInFlight = 2;
     Frame frames_[kFramesInFlight];
@@ -102,6 +103,7 @@ private:
     Buffer vertexBuffer_;
     Buffer indexBuffer_;
     uint32_t indexCount_ = 0;
+    uint32_t opaqueIndexCount_ = 0;
 };
 
 } // namespace peekstep

@@ -19,5 +19,5 @@ void main()
     float ndotv = abs(dot(n, v));
     float diffuse = 0.25 + 0.75 * ndotv;
     float specular = pow(ndotv, 40.0) * 0.25;
-    outColor = vec4(inColor.rgb * diffuse + vec3(specular), 1.0);
+    outColor = vec4(inColor.rgb * diffuse + vec3(specular), inColor.a);
 }
