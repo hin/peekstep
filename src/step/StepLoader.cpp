@@ -8,6 +8,8 @@
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
 #include <ShapeFix_Face.hxx>
+#include <ShapeFix_Wire.hxx>
+#include <Precision.hxx>
 #include <Bnd_Box.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <Poly_Triangulation.hxx>
@@ -68,6 +70,27 @@ void meshShape(const TopoDS_Shape& shape, double deflection, bool inParallel)
     mesher.SetShape(shape);
     mesher.ChangeParameters() = params;
     mesher.Perform(ctx);
+}
+
+// Adds the 2D (parametric) edge curves that some faces lack. The shape is
+// changed in place, so faces of one shape must not be fixed from two threads.
+void addMissingPCurves(const TopoDS_Shape& shape)
+{
+    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+        const TopoDS_Face face = TopoDS::Face(ex.Current().Oriented(TopAbs_FORWARD));
+        bool missing = false;
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More() && !missing; e.Next()) {
+            const TopoDS_Edge& edge = TopoDS::Edge(e.Current());
+            Standard_Real first, last;
+            missing = !BRep_Tool::Degenerated(edge) && BRep_Tool::CurveOnSurface(edge, face, first, last).IsNull();
+        }
+        if (!missing)
+            continue;
+        for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+            ShapeFix_Wire fix(TopoDS::Wire(w.Current()), face, Precision::Confusion());
+            fix.FixEdgeCurves();
+        }
+    }
 }
 
 double secondsSince(Clock::time_point t0)
@@ -336,6 +359,11 @@ Model loadStep(const std::string& path, LoadProgress* progress)
             meshShape(job.shape, job.deflection, inParallel);
     };
 
+    // Shape healing was skipped while reading, and about a quarter of the
+    // faces in a KiCad export lack the 2D edge curves the mesher needs. Add
+    // just those curves up front; it is much cheaper than healing the faces.
+    OSD_Parallel::For(0, int(jobs.size()), [&](int i) { addMissingPCurves(jobs[size_t(i)].shape); });
+
     // Big parts (like the board itself) mesh their faces in parallel; the
     // many small parts are meshed in parallel with each other.
     constexpr int kBigPart = 300;
@@ -348,9 +376,8 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     }
     OSD_Parallel::For(0, int(small.size()), [&](int i) { meshPart(*small[size_t(i)], false); });
 
-    // Shape healing was skipped while reading because it is slow. A few faces
-    // (often with missing 2D curves) then fail to mesh: heal just those faces
-    // and mesh them again. Parts are handled in parallel, faces of one part in
+    // A few faces may still fail to mesh: heal just those faces and mesh
+    // them again. Parts are handled in parallel, faces of one part in
     // sequence because they share edges.
     std::vector<std::vector<TopoDS_Face>> unmeshed(jobs.size());
     for (size_t i = 0; i < jobs.size(); ++i) {
