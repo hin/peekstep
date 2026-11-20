@@ -17,6 +17,10 @@ void installOpenFileHandler();
 // Files that arrived through the handler above since the last call.
 std::vector<std::string> takeOpenedFiles();
 
+// macOS: shows an error in an alert window. Does nothing elsewhere (Windows
+// already shows a message box, Linux prints to the terminal).
+void showErrorDialog(const std::string& text);
+
 // Short description of the platform the binary was built for, e.g. "Windows x64".
 const char* platformName();
 

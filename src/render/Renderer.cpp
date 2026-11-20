@@ -102,6 +102,67 @@ Renderer::~Renderer()
     vkDestroyInstance(instance_, nullptr);
 }
 
+void useLinkedVulkanLoader()
+{
+#if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
+    glfwInitVulkanLoader(vkGetInstanceProcAddr);
+#endif
+}
+
+int printVulkanInfo()
+{
+    uint32_t version = 0;
+    vkEnumerateInstanceVersion(&version);
+    std::printf("Vulkan loader: %u.%u.%u\n", VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version),
+                VK_API_VERSION_PATCH(version));
+
+    uint32_t count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> available(count);
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data());
+    std::printf("Instance extensions:\n");
+    for (const VkExtensionProperties& e : available)
+        std::printf("  %s\n", e.extensionName);
+
+    std::vector<const char*> exts;
+    VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    if (hasExtension(available, kPortabilityEnumeration)) {
+        exts.push_back(kPortabilityEnumeration);
+        ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    }
+    ci.enabledExtensionCount = uint32_t(exts.size());
+    ci.ppEnabledExtensionNames = exts.data();
+    VkInstance instance = VK_NULL_HANDLE;
+    const VkResult r = vkCreateInstance(&ci, nullptr, &instance);
+    int status = 0;
+    if (r != VK_SUCCESS) {
+        std::printf("vkCreateInstance failed: %d (no Vulkan driver found?)\n", int(r));
+        status = 1;
+    } else {
+        uint32_t n = 0;
+        vkEnumeratePhysicalDevices(instance, &n, nullptr);
+        std::vector<VkPhysicalDevice> devices(n);
+        vkEnumeratePhysicalDevices(instance, &n, devices.data());
+        std::printf("GPUs: %u\n", n);
+        for (VkPhysicalDevice d : devices) {
+            VkPhysicalDeviceProperties p{};
+            vkGetPhysicalDeviceProperties(d, &p);
+            std::printf("  %s (Vulkan %u.%u)\n", p.deviceName, VK_API_VERSION_MAJOR(p.apiVersion),
+                        VK_API_VERSION_MINOR(p.apiVersion));
+        }
+        vkDestroyInstance(instance, nullptr);
+    }
+
+    useLinkedVulkanLoader();
+    if (glfwInit()) {
+        std::printf("GLFW Vulkan support: %s\n", glfwVulkanSupported() ? "yes" : "no");
+        glfwTerminate();
+    } else {
+        std::printf("GLFW: no window system available\n");
+    }
+    return status;
+}
+
 void Renderer::createInstance()
 {
     uint32_t glfwCount = 0;

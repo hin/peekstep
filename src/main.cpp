@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "app/Viewer.h"
+#include "platform/Platform.h"
+#include "render/Renderer.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -105,6 +107,7 @@ const char* kUsage = "Usage: peekstep [file.step]\n"
                      "Opens a STEP file for a quick look. Files can also be dropped on the window.\n"
                      "\n"
                      "  --info         load the file, print what is in it and exit (no window)\n"
+                     "  --vulkan-info  print the Vulkan drivers and GPUs that were found\n"
                      "  -h, --help     show this help\n"
                      "  -v, --version  show the version";
 
@@ -124,6 +127,10 @@ int main(int argc, char** argv)
         if (a == "-v" || a == "--version") {
             showMessage("Peekstep " PEEKSTEP_VERSION, false);
             return 0;
+        }
+        if (a == "--vulkan-info") {
+            attachConsole();
+            return peekstep::printVulkanInfo();
         }
         if (a == "--info") {
             infoOnly = true;
@@ -153,7 +160,9 @@ int main(int argc, char** argv)
         if (viewer.loading())
             std::_Exit(0); // don't wait for a load nobody wants any more
     } catch (const std::exception& e) {
-        showMessage(std::string("Peekstep could not start: ") + e.what(), true);
+        const std::string text = std::string("Peekstep could not start: ") + e.what();
+        showMessage(text, true);
+        peekstep::showErrorDialog(text); // macOS: started from Finder, nobody sees stderr
         return 1;
     }
     return 0;

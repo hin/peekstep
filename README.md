@@ -45,6 +45,7 @@ Get the latest version from the
 ```
 peekstep [file.step]
 peekstep --info file.step   # print parts, colors and timings, no window
+peekstep --vulkan-info      # print the Vulkan drivers and GPUs found (for troubleshooting)
 ```
 
 You can also drop a file on the window.

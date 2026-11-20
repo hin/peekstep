@@ -14,6 +14,15 @@ namespace peekstep {
 
 struct Model;
 
+// Call before glfwInit(): makes GLFW use the Vulkan loader Peekstep links
+// to. Otherwise GLFW searches for one by file name, and on macOS does not
+// find the loader bundled in Peekstep.app.
+void useLinkedVulkanLoader();
+
+// --vulkan-info: prints what the Vulkan loader finds (drivers, GPUs).
+// Returns 0 if a Vulkan instance could be created.
+int printVulkanInfo();
+
 class Renderer {
 public:
     explicit Renderer(GLFWwindow* window); // throws std::runtime_error

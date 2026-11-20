@@ -178,6 +178,11 @@ jobs:
             "$RUNNER_TEMP/MoltenVK" "$v" stage
           otool -L stage/Peekstep.app/Contents/MacOS/peekstep
           stage/Peekstep.app/Contents/MacOS/peekstep --info tests/data/test_board.step > /dev/null
+          # The app must find its bundled MoltenVK (it adds the Metal surface
+          # extension) and GLFW must find the bundled Vulkan loader.
+          stage/Peekstep.app/Contents/MacOS/peekstep --vulkan-info | tee "$RUNNER_TEMP/vulkan-info.txt" || true
+          grep -q VK_EXT_metal_surface "$RUNNER_TEMP/vulkan-info.txt"
+          grep -q "GLFW Vulkan support: yes" "$RUNNER_TEMP/vulkan-info.txt"
           packaging/collect-licenses.sh build/macos/vcpkg_installed/arm64-osx-peekstep stage/THIRD-PARTY-LICENSES.txt \
             "MoltenVK=$RUNNER_TEMP/MoltenVK/LICENSE"
           cp stage/THIRD-PARTY-LICENSES.txt LICENSE stage/Peekstep.app/Contents/Resources/
