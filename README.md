@@ -22,23 +22,69 @@ STEP, Vulkan for drawing, and GLFW + Dear ImGui for the window and UI.
 Get the latest version from the
 [Releases page](https://github.com/hin/peekstep/releases).
 
-- **Windows (x64):** `peekstep-<version>-windows-x64.exe` is the program
-  itself; download it and run it. Or use `peekstep-<version>-windows-x64-setup.exe`,
-  which installs Peekstep for your user (no admin rights) with a Start menu
-  entry, an uninstaller and an optional checkbox to open `.step`/`.stp` files
-  with Peekstep.
-- **macOS (Apple Silicon, macOS 13 or newer):** unzip `Peekstep-<version>-macos-arm64.zip` and
-  move Peekstep to Applications. The app is not signed by Apple, so the first
-  time you open it, right-click it and choose Open (or allow it under System
-  Settings, Privacy & Security). Peekstep shows up under "Open With" for STEP
-  files. To make it the double-click app, use Get Info on a `.step` file,
-  choose Peekstep under "Open with" and click Change All.
+- **Windows (x64):** `peekstep-<version>-windows-x64-setup.exe` installs
+  Peekstep for your user (no admin rights) with a Start menu entry, an
+  uninstaller and an optional checkbox to open `.step`/`.stp` files with
+  Peekstep. Or download `peekstep-<version>-windows-x64.exe`, the program
+  itself, put it anywhere and run it. Windows may warn about both the first
+  time; see [Opening an unsigned download](#opening-an-unsigned-download).
+- **macOS (Apple Silicon, macOS 13 or newer):** open
+  `peekstep-<version>-macos-arm64.dmg` and drag Peekstep to Applications. The
+  app is not signed by Apple, so macOS blocks it the first time; see
+  [Opening an unsigned download](#opening-an-unsigned-download).
+  Peekstep shows up under "Open With" for STEP files. To make it the
+  double-click app, use Get Info on a `.step` file, choose Peekstep under
+  "Open with" and click Change All.
 - **Linux (x64):** unpack `peekstep-<version>-linux-x64.tar.gz` and run
   `peekstep`. Or run `./install.sh` from that folder: it installs Peekstep to
   `~/.local/bin` with a menu entry, and asks whether it should become the
   default app for STEP files (`./install.sh --uninstall` removes it again).
   Built on Ubuntu 22.04, so it runs on distributions with glibc 2.35 or newer.
   It needs a Vulkan driver, which most desktop installs have.
+
+Each release also has `SHA256SUMS.txt` with checksums of the downloads.
+
+### Opening an unsigned download
+
+Peekstep is not signed with a paid Apple or Microsoft certificate, so both
+systems warn the first time you open it. The downloads are built by GitHub
+Actions straight from this repository; you can compare them with
+`SHA256SUMS.txt` from the same release.
+
+**Windows**
+
+- If your browser says the file "isn't commonly downloaded" (Edge), open the
+  downloads list, click `...` next to the file, choose **Keep**, then
+  **Show more** and **Keep anyway**.
+- When you run it, SmartScreen may show "Windows protected your PC". Click
+  **More info**, then **Run anyway**. Windows remembers this for that file.
+- Alternatively, before running it: right-click the file, choose
+  **Properties**, tick **Unblock** at the bottom and click OK.
+
+**macOS 15 (Sequoia) and newer**
+
+1. Double-click Peekstep. macOS says it can't verify that Peekstep is free of
+   malware. Click **Done** (not Move to Trash).
+2. Open **System Settings**, then **Privacy & Security**, and scroll down to
+   the Security section. Next to "Peekstep was blocked", click
+   **Open Anyway** and confirm with your password.
+3. Open Peekstep again and click **Open Anyway** in the dialog.
+
+**macOS 13 and 14**
+
+Control-click (or right-click) Peekstep in Applications, choose **Open**, then
+click **Open** in the dialog.
+
+**Any macOS, from the Terminal**
+
+Removing the "downloaded from the internet" mark skips the check:
+
+```
+xattr -dr com.apple.quarantine /Applications/Peekstep.app
+```
+
+You only have to do this once; after that Peekstep opens normally, also when
+you double-click a STEP file.
 
 ## Usage
 

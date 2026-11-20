@@ -187,7 +187,17 @@ jobs:
             "MoltenVK=$RUNNER_TEMP/MoltenVK/LICENSE"
           cp stage/THIRD-PARTY-LICENSES.txt LICENSE stage/Peekstep.app/Contents/Resources/
           codesign --force --sign - stage/Peekstep.app
-          ditto -c -k --keepParent stage/Peekstep.app "dist/Peekstep-$v-macos-arm64.zip"
+          # A disk image with the app and a link to Applications to drag it to.
+          mkdir -p dmgroot
+          cp -R stage/Peekstep.app dmgroot/
+          ln -s /Applications dmgroot/Applications
+          for attempt in 1 2 3; do # hdiutil is sometimes "busy" on CI runners
+            hdiutil create -volname "Peekstep $v" -srcfolder dmgroot -fs HFS+ -format UDZO -ov \
+              "dist/peekstep-$v-macos-arm64.dmg" && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep 10
+          done
+          hdiutil verify "dist/peekstep-$v-macos-arm64.dmg"
           ls -l dist
 
       - name: Package (Windows)
@@ -235,13 +245,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -l dist
+          (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           cat > notes.md <<'NOTES'
           ## Downloads
 
-          - **Windows:** `peekstep-*-windows-x64.exe` is the program itself; download and run it. `*-setup.exe` installs it for your user, with a Start menu entry and an optional checkbox to open .step/.stp files with Peekstep.
-          - **macOS (Apple Silicon):** unzip `Peekstep-*-macos-arm64.zip` and move Peekstep to Applications. The app is not signed by Apple, so the first time, right-click it and choose Open (or allow it under System Settings, Privacy & Security). To open STEP files with a double-click, use Get Info on a .step file, pick Peekstep under "Open with" and click Change All.
+          - **Windows (x64):** `peekstep-*-windows-x64-setup.exe` installs Peekstep for your user (no admin rights), with a Start menu entry and an optional checkbox to open .step/.stp files with Peekstep. `peekstep-*-windows-x64.exe` is the program itself if you'd rather not install: put it anywhere and run it. Windows SmartScreen may warn the first time: click More info, then Run anyway ([details](https://github.com/hin/peekstep#opening-an-unsigned-download)).
+          - **macOS (Apple Silicon, macOS 13+):** open `peekstep-*-macos-arm64.dmg` and drag Peekstep to Applications. The app is not signed by Apple, so macOS blocks it the first time; see [Opening an unsigned download](https://github.com/hin/peekstep#opening-an-unsigned-download). To open STEP files with a double-click, use Get Info on a .step file, pick Peekstep under "Open with" and click Change All.
           - **Linux (x64):** unpack `peekstep-*-linux-x64.tar.gz` and run `peekstep`, or run `./install.sh` to add it to your menu (it asks whether to make it the default for STEP files). Needs a Vulkan driver.
+
+          `SHA256SUMS.txt` has checksums of the downloads (check with `sha256sum -c SHA256SUMS.txt --ignore-missing`).
 
           Peekstep was developed with AI assistance; see the README.
           NOTES
