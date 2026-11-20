@@ -59,6 +59,7 @@ private:
     std::string error_;
     std::optional<Model> info_; // stats/colors/materials of the shown model (no geometry)
     size_t triangleCount_ = 0;
+    double loadSeconds_ = 0;
     bool showPanel_ = true;
 };
 

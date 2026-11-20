@@ -2,14 +2,23 @@
 #include "step/StepLoader.h"
 
 #include <BRepBndLib.hxx>
+#include <BRepMesh_Context.hxx>
+#include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
+#include <BRepMesh_FaceDiscret.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
+#include <ShapeFix_Face.hxx>
 #include <Bnd_Box.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <Poly_Triangulation.hxx>
 #include <Quantity_Color.hxx>
 #include <Quantity_ColorRGBA.hxx>
+#include <OSD_Parallel.hxx>
 #include <STEPCAFControl_Reader.hxx>
+#include <Standard_Version.hxx>
+#if OCC_VERSION_HEX >= 0x070900
+#include <ShapeProcess.hxx>
+#endif
 #include <TCollection_HAsciiString.hxx>
 #include <TDocStd_Document.hxx>
 #include <TopExp_Explorer.hxx>
@@ -32,6 +41,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <map>
 #include <stdexcept>
 
@@ -42,6 +52,23 @@ using Clock = std::chrono::steady_clock;
 using FaceIndexMap = NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher>;
 using StyleMap = NCollection_IndexedDataMap<TopoDS_Shape, XCAFPrs_Style, TopTools_ShapeMapHasher>;
 using LabelSeq = NCollection_Sequence<TDF_Label>;
+using ShapeMap = NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher>;
+
+void meshShape(const TopoDS_Shape& shape, double deflection, bool inParallel)
+{
+    IMeshTools_Parameters params;
+    params.Deflection = deflection;
+    params.Angle = 0.35;
+    params.InParallel = inParallel;
+    // Delabella triangulates big planar faces (board outline, copper zones
+    // with thousands of holes) far faster than the default algorithm.
+    Handle(BRepMesh_Context) ctx = new BRepMesh_Context();
+    ctx->SetFaceDiscret(new BRepMesh_FaceDiscret(new BRepMesh_DelabellaMeshAlgoFactory()));
+    BRepMesh_IncrementalMesh mesher;
+    mesher.SetShape(shape);
+    mesher.ChangeParameters() = params;
+    mesher.Perform(ctx);
+}
 
 double secondsSince(Clock::time_point t0)
 {
@@ -117,12 +144,20 @@ void collectFaceColors(const Leaf& leaf, FaceIndexMap& faceColor,
     }
 }
 
-void appendFace(const TopoDS_Face& face, const TopLoc_Location& instanceLoc, uint32_t color, Model& model)
+void appendFace(const TopoDS_Face& original, const TopLoc_Location& instanceLoc, uint32_t color,
+                const ShapeMap& healedFaces, Model& model)
 {
+    // Use the healed copy of a face that did not mesh, placed like the original.
+    TopoDS_Face face = original;
+    if (const TopoDS_Shape* fixed = healedFaces.Seek(original.Located(TopLoc_Location()).Oriented(TopAbs_FORWARD)))
+        face = TopoDS::Face(fixed->Located(original.Location()).Oriented(original.Orientation()));
+
     TopLoc_Location faceLoc;
     const Handle(Poly_Triangulation)& tri = BRep_Tool::Triangulation(face, faceLoc);
-    if (tri.IsNull() || tri->NbTriangles() == 0)
+    if (tri.IsNull() || tri->NbTriangles() == 0) {
+        ++model.unmeshedFaces;
         return;
+    }
 
     const gp_Trsf trsf = (instanceLoc * faceLoc).Transformation();
     const bool reversed = face.Orientation() == TopAbs_REVERSED;
@@ -224,11 +259,23 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     reader.SetGDTMode(false);
     reader.SetSHUOMode(false);
 
+
     if (reader.ReadFile(path.c_str()) != IFSelect_RetDone)
         throw std::runtime_error("Could not read STEP file");
+    model.parseSeconds = secondsSince(t0);
+
+#if OCC_VERSION_HEX >= 0x070900
+    // Skip shape healing. It is most of the conversion time, and files from
+    // CAD tools (KiCad uses OpenCASCADE itself) rarely need it for viewing.
+    // Set PEEKSTEP_HEAL=1 to turn it back on for a broken file.
+    const char* heal = std::getenv("PEEKSTEP_HEAL");
+    if (!(heal && heal[0] == '1'))
+        reader.SetShapeProcessFlags(ShapeProcess::OperationsFlags());
+#endif
+    const auto tTransfer = Clock::now();
     if (!reader.Transfer(doc))
         throw std::runtime_error("Could not convert the STEP data");
-    model.readSeconds = secondsSince(t0);
+    model.transferSeconds = secondsSince(tTransfer);
 
     if (progress)
         progress->stage = 1;
@@ -252,29 +299,90 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     if (leaves.empty())
         throw std::runtime_error("The file contains no shapes");
 
-    // Mesh each distinct part once. The deflection follows the part size so
-    // that tiny components in a big assembly still look smooth.
-    std::vector<TopoDS_Shape> unique;
+    ShapeMap healedFaces; // unlocated face that failed to mesh -> healed, meshed copy
+
+    // Mesh each distinct part once (keyed without location, so the same
+    // geometry is never meshed by two threads at once).
+    struct MeshJob {
+        TopoDS_Shape shape;
+        int faces = 0;
+        double deflection = 0;
+    };
+    std::vector<MeshJob> jobs;
     {
         FaceIndexMap seen;
         for (const Leaf& l : leaves) {
-            if (!seen.IsBound(l.shape)) {
-                seen.Bind(l.shape, 0);
-                unique.push_back(l.shape);
+            const TopoDS_Shape key = l.shape.Located(TopLoc_Location());
+            if (seen.IsBound(key))
+                continue;
+            seen.Bind(key, 0);
+            MeshJob job;
+            job.shape = key;
+            for (TopExp_Explorer ex(key, TopAbs_FACE); ex.More(); ex.Next())
+                ++job.faces;
+            jobs.push_back(std::move(job));
+        }
+    }
+
+    // The deflection follows the part size so that tiny components in a big
+    // assembly still look smooth.
+    for (MeshJob& job : jobs) {
+        Bnd_Box box;
+        BRepBndLib::Add(job.shape, box, false);
+        job.deflection = box.IsVoid() ? 0.0 : std::max(std::sqrt(box.SquareExtent()) * 0.002, 1e-4);
+    }
+    auto meshPart = [](const MeshJob& job, bool inParallel) {
+        if (job.deflection > 0)
+            meshShape(job.shape, job.deflection, inParallel);
+    };
+
+    // Big parts (like the board itself) mesh their faces in parallel; the
+    // many small parts are meshed in parallel with each other.
+    constexpr int kBigPart = 300;
+    std::vector<const MeshJob*> small;
+    for (const MeshJob& job : jobs) {
+        if (job.faces >= kBigPart)
+            meshPart(job, true);
+        else
+            small.push_back(&job);
+    }
+    OSD_Parallel::For(0, int(small.size()), [&](int i) { meshPart(*small[size_t(i)], false); });
+
+    // Shape healing was skipped while reading because it is slow. A few faces
+    // (often with missing 2D curves) then fail to mesh: heal just those faces
+    // and mesh them again. Parts are handled in parallel, faces of one part in
+    // sequence because they share edges.
+    std::vector<std::vector<TopoDS_Face>> unmeshed(jobs.size());
+    for (size_t i = 0; i < jobs.size(); ++i) {
+        FaceIndexMap seen;
+        for (TopExp_Explorer ex(jobs[i].shape, TopAbs_FACE); ex.More(); ex.Next()) {
+            const TopoDS_Face& face = TopoDS::Face(ex.Current());
+            TopLoc_Location loc;
+            const Handle(Poly_Triangulation)& tri = BRep_Tool::Triangulation(face, loc);
+            if (!tri.IsNull() && tri->NbTriangles() > 0)
+                continue;
+            const TopoDS_Shape key = face.Located(TopLoc_Location()).Oriented(TopAbs_FORWARD);
+            if (!seen.IsBound(key)) {
+                seen.Bind(key, 0);
+                unmeshed[i].push_back(TopoDS::Face(key));
             }
         }
     }
-    for (const TopoDS_Shape& shape : unique) {
-        Bnd_Box box;
-        BRepBndLib::Add(shape, box, false);
-        if (box.IsVoid())
-            continue;
-        const double diag = std::sqrt(box.SquareExtent());
-        IMeshTools_Parameters params;
-        params.Deflection = std::max(diag * 0.002, 1e-4);
-        params.Angle = 0.35;
-        params.InParallel = true;
-        BRepMesh_IncrementalMesh mesher(shape, params);
+    std::vector<std::vector<std::pair<TopoDS_Shape, TopoDS_Shape>>> fixedFaces(jobs.size());
+    OSD_Parallel::For(0, int(jobs.size()), [&](int i) {
+        for (const TopoDS_Face& face : unmeshed[size_t(i)]) {
+            Handle(ShapeFix_Face) fix = new ShapeFix_Face(face);
+            fix->Perform();
+            const TopoDS_Face fixed = fix->Face();
+            meshShape(fixed, jobs[size_t(i)].deflection, false);
+            fixedFaces[size_t(i)].emplace_back(face, fixed);
+        }
+    });
+    for (const auto& list : fixedFaces) {
+        for (const auto& [face, fixed] : list) {
+            healedFaces.Bind(face, fixed);
+            ++model.healedFaces;
+        }
     }
     model.meshSeconds = secondsSince(t1);
 
@@ -282,6 +390,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
         progress->stage = 2;
 
     // Build the vertex and index buffers.
+    const auto t2 = Clock::now();
     std::map<uint32_t, size_t> colorFaces;
     for (const Leaf& leaf : leaves) {
         FaceIndexMap faceColor;
@@ -294,7 +403,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
             uint32_t color = instanceColor;
             if (const int* idx = faceColor.Seek(face))
                 color = packColor(toSrgb(palette[size_t(*idx)]));
-            appendFace(face, leaf.location, color, model);
+            appendFace(face, leaf.location, color, healedFaces, model);
             ++colorFaces[color];
             ++model.faces;
         }
@@ -324,6 +433,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     }
 
     XCAFApp_Application::GetApplication()->Close(doc);
+    model.buildSeconds = secondsSince(t2);
     return model;
 }
 

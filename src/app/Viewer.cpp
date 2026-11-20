@@ -125,6 +125,7 @@ void Viewer::pollLoad()
     }
     Model& m = *job->model;
     renderer_->uploadModel(m);
+    loadSeconds_ = std::chrono::duration<double>(std::chrono::steady_clock::now() - loadStart_).count();
     camera_.setView(Camera::View::Iso);
     camera_.fit(Vec3(m.bboxMin[0], m.bboxMin[1], m.bboxMin[2]), Vec3(m.bboxMax[0], m.bboxMax[1], m.bboxMax[2]));
 
@@ -205,7 +206,10 @@ void Viewer::drawUi()
             ImGui::Text("Parts: %zu   Faces: %zu   Triangles: %zu", m.parts, m.faces, triangleCount_);
             ImGui::Text("Size: %.2f x %.2f x %.2f mm", m.bboxMax[0] - m.bboxMin[0], m.bboxMax[1] - m.bboxMin[1],
                         m.bboxMax[2] - m.bboxMin[2]);
-            ImGui::Text("Read %.2f s, mesh %.2f s", m.readSeconds, m.meshSeconds);
+            ImGui::Text("Loaded in %.2f s", loadSeconds_);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Parse %.2f s\nConvert %.2f s\nMesh %.2f s\nBuild %.2f s", m.parseSeconds,
+                                  m.transferSeconds, m.meshSeconds, m.buildSeconds);
 
             ImGui::Separator();
             if (ImGui::Button("Iso")) camera_.setView(Camera::View::Iso);

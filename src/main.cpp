@@ -40,9 +40,30 @@ std::vector<std::string> utf8Args(int argc, char** argv)
     return args;
 }
 
+// A Windows GUI program has no console. When started from a terminal, attach
+// to it so --info and --help can print there.
+bool attachConsole()
+{
+#ifdef _WIN32
+    static bool attached = false;
+    if (!attached && AttachConsole(ATTACH_PARENT_PROCESS)) {
+        std::freopen("CONOUT$", "w", stdout);
+        std::freopen("CONOUT$", "w", stderr);
+        attached = true;
+    }
+    return attached;
+#else
+    return true;
+#endif
+}
+
 void showMessage(const std::string& text, bool error)
 {
 #ifdef _WIN32
+    if (attachConsole()) {
+        std::fprintf(error ? stderr : stdout, "%s\n", text.c_str());
+        return;
+    }
     // A GUI app on Windows has no console to print to.
     const int len = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
     std::wstring w(size_t(len), L'\0');
@@ -58,11 +79,13 @@ int printInfo(const std::string& file)
     try {
         const peekstep::Model m = peekstep::loadStep(file);
         std::printf("File:      %s\n", file.c_str());
-        std::printf("Parts:     %zu\nFaces:     %zu\nTriangles: %zu\nVertices:  %zu\n", m.parts, m.faces,
-                    m.indices.size() / 3, m.vertices.size());
+        std::printf("Parts:     %zu\nFaces:     %zu (%zu not meshed)\nTriangles: %zu\nVertices:  %zu\n", m.parts,
+                    m.faces, m.unmeshedFaces, m.indices.size() / 3, m.vertices.size());
+        std::printf("Healed:    %zu faces\n", m.healedFaces);
         std::printf("Size:      %.3f x %.3f x %.3f mm\n", m.bboxMax[0] - m.bboxMin[0], m.bboxMax[1] - m.bboxMin[1],
                     m.bboxMax[2] - m.bboxMin[2]);
-        std::printf("Read:      %.3f s\nMesh:      %.3f s\n", m.readSeconds, m.meshSeconds);
+        std::printf("Parse:     %.3f s\nConvert:   %.3f s\nMesh:      %.3f s\nBuild:     %.3f s\n", m.parseSeconds,
+                    m.transferSeconds, m.meshSeconds, m.buildSeconds);
         std::printf("Colors:\n");
         for (const peekstep::ColorInfo& c : m.colors)
             std::printf("  #%02X%02X%02X  %zu faces\n", int(c.rgba[0] * 255 + 0.5f), int(c.rgba[1] * 255 + 0.5f),
@@ -118,6 +141,7 @@ int main(int argc, char** argv)
             showMessage(kUsage, true);
             return 2;
         }
+        attachConsole();
         return printInfo(file);
     }
 
