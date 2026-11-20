@@ -44,17 +44,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read version
-        id: version
-        run: |
-          version=$(sed -n 's/^project(peekstep VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          echo "Version $version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match the version in CMakeLists.txt ($version)"
-            exit 1
-          fi
-
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
@@ -74,6 +63,18 @@ jobs:
           update: true
           install: git
           pacboy: gcc:p cmake:p ninja:p pkgconf:p
+
+      # After MSYS2 is set up: on Windows, run steps use its shell.
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's/^project(peekstep VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "Version $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in CMakeLists.txt ($version)"
+            exit 1
+          fi
 
       - name: Set up vcpkg
         run: |
