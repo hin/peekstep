@@ -189,11 +189,6 @@ void Viewer::drawUi()
         ImGui::GetForegroundDrawList()->AddText(
             ImVec2(vp->Pos.x + (vp->Size.x - size.x) * 0.5f, vp->Pos.y + (vp->Size.y - size.y) * 0.5f),
             IM_COL32(200, 200, 210, 255), msg);
-        const char* hint = "F1: about Peekstep";
-        const ImVec2 hintSize = ImGui::CalcTextSize(hint);
-        ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(vp->Pos.x + (vp->Size.x - hintSize.x) * 0.5f, vp->Pos.y + (vp->Size.y + size.y) * 0.5f + pad),
-            IM_COL32(140, 140, 150, 255), hint);
         return;
     }
 
@@ -297,6 +292,33 @@ void Viewer::drawLoadingOverlay()
                                             IM_COL32(220, 220, 230, 255), text);
 }
 
+// "Peekstep vX.Y.Z" in the lower right corner; clicking it opens About.
+void Viewer::drawVersionLabel()
+{
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float pad = 6.0f * ImGui::GetStyle().FontScaleDpi;
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x - pad, vp->Pos.y + vp->Size.y - pad), ImGuiCond_Always,
+                            ImVec2(1.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground
+                                 | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings
+                                 | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##version", nullptr, flags)) {
+        const char* label = "Peekstep v" PEEKSTEP_VERSION;
+        const ImVec2 size = ImGui::CalcTextSize(label);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        if (ImGui::InvisibleButton("##about", size))
+            showAbout_ = !showAbout_;
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImGui::GetWindowDrawList()->AddText(pos, hovered ? IM_COL32(230, 230, 240, 255) : IM_COL32(140, 140, 150, 200),
+                                            label);
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 void Viewer::drawAbout()
 {
     if (!showAbout_)
@@ -362,6 +384,7 @@ int Viewer::run()
         renderer_->newImGuiFrame();
         handleInput();
         drawUi();
+        drawVersionLabel();
         drawLoadingOverlay();
         drawAbout();
         ImGui::Render();

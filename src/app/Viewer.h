@@ -45,6 +45,7 @@ private:
     void drawUi();
     void drawLoadingOverlay();
     void drawAbout();
+    void drawVersionLabel();
     void updateTitle();
 
     static void onDrop(GLFWwindow* window, int count, const char** paths);
