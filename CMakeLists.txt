@@ -32,7 +32,9 @@ add_executable(peekstep
 )
 
 target_include_directories(peekstep PRIVATE src ${OpenCASCADE_INCLUDE_DIR})
-target_compile_definitions(peekstep PRIVATE PEEKSTEP_VERSION="${PROJECT_VERSION}")
+# _USE_MATH_DEFINES: OpenCASCADE headers use M_PI, which MinGW/MSVC only
+# define on request in strict C++ mode.
+target_compile_definitions(peekstep PRIVATE PEEKSTEP_VERSION="${PROJECT_VERSION}" _USE_MATH_DEFINES)
 
 # Only the OpenCASCADE toolkits needed to read STEP with colors and to mesh.
 # OCCT 7.8+ merged the STEP toolkits into TKDESTEP.

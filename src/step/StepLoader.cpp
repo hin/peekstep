@@ -11,10 +11,12 @@
 #include <Quantity_ColorRGBA.hxx>
 #include <STEPCAFControl_Reader.hxx>
 #include <TCollection_HAsciiString.hxx>
-#include <TDF_LabelSequence.hxx>
 #include <TDocStd_Document.hxx>
 #include <TopExp_Explorer.hxx>
-#include <TopTools_DataMapOfShapeInteger.hxx>
+#include <NCollection_DataMap.hxx>
+#include <NCollection_IndexedDataMap.hxx>
+#include <NCollection_Sequence.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Face.hxx>
 #include <XCAFApp_Application.hxx>
@@ -25,7 +27,6 @@
 #include <XCAFDoc_VisMaterialTool.hxx>
 #include <XCAFPrs.hxx>
 #include <XCAFPrs_DocumentExplorer.hxx>
-#include <XCAFPrs_IndexedDataMapOfShapeStyle.hxx>
 #include <XCAFPrs_Style.hxx>
 
 #include <algorithm>
@@ -38,6 +39,9 @@ namespace peekstep {
 namespace {
 
 using Clock = std::chrono::steady_clock;
+using FaceIndexMap = NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher>;
+using StyleMap = NCollection_IndexedDataMap<TopoDS_Shape, XCAFPrs_Style, TopTools_ShapeMapHasher>;
+using LabelSeq = NCollection_Sequence<TDF_Label>;
 
 double secondsSince(Clock::time_point t0)
 {
@@ -69,7 +73,7 @@ bool styleColor(const XCAFPrs_Style& style, Quantity_ColorRGBA& out)
 // what CAD users expect when they compare colors with other tools.
 std::array<float, 4> toSrgb(const Quantity_ColorRGBA& c)
 {
-    Standard_Real r, g, b;
+    double r, g, b;
     c.GetRGB().Values(r, g, b, Quantity_TOC_sRGB);
     return {float(r), float(g), float(b), c.Alpha()};
 }
@@ -89,14 +93,14 @@ struct Leaf {
 
 // Maps each face of a part to a color, honouring colors set on sub-shapes
 // (solids, shells, faces). More specific shapes win.
-void collectFaceColors(const Leaf& leaf, TopTools_DataMapOfShapeInteger& faceColor,
+void collectFaceColors(const Leaf& leaf, FaceIndexMap& faceColor,
                        std::vector<Quantity_ColorRGBA>& palette)
 {
-    XCAFPrs_IndexedDataMapOfShapeStyle styles;
+    StyleMap styles;
     XCAFPrs::CollectStyleSettings(leaf.label, TopLoc_Location(), styles);
 
     std::vector<std::pair<TopoDS_Shape, Quantity_ColorRGBA>> entries;
-    for (XCAFPrs_IndexedDataMapOfShapeStyle::Iterator it(styles); it.More(); it.Next()) {
+    for (StyleMap::Iterator it(styles); it.More(); it.Next()) {
         Quantity_ColorRGBA c;
         if (styleColor(it.Value(), c))
             entries.emplace_back(it.Key(), c);
@@ -170,11 +174,11 @@ void appendFace(const TopoDS_Face& face, const TopLoc_Location& instanceLoc, uin
 void collectMaterials(const Handle(TDocStd_Document)& doc, Model& model)
 {
     Handle(XCAFDoc_MaterialTool) matTool = XCAFDoc_DocumentTool::MaterialTool(doc->Main());
-    TDF_LabelSequence labels;
+    LabelSeq labels;
     matTool->GetMaterialLabels(labels);
     for (const TDF_Label& l : labels) {
         Handle(TCollection_HAsciiString) name, desc, densName, densType;
-        Standard_Real density = 0;
+        double density = 0;
         if (!matTool->GetMaterial(l, name, desc, density, densName, densType))
             continue;
         MaterialInfo m;
@@ -186,7 +190,7 @@ void collectMaterials(const Handle(TDocStd_Document)& doc, Model& model)
     }
 
     Handle(XCAFDoc_VisMaterialTool) visTool = XCAFDoc_DocumentTool::VisMaterialTool(doc->Main());
-    TDF_LabelSequence visLabels;
+    LabelSeq visLabels;
     visTool->GetMaterials(visLabels);
     for (const TDF_Label& l : visLabels) {
         Handle(XCAFDoc_VisMaterial) vm = visTool->GetMaterial(l);
@@ -252,7 +256,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     // that tiny components in a big assembly still look smooth.
     std::vector<TopoDS_Shape> unique;
     {
-        TopTools_DataMapOfShapeInteger seen;
+        FaceIndexMap seen;
         for (const Leaf& l : leaves) {
             if (!seen.IsBound(l.shape)) {
                 seen.Bind(l.shape, 0);
@@ -280,7 +284,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     // Build the vertex and index buffers.
     std::map<uint32_t, size_t> colorFaces;
     for (const Leaf& leaf : leaves) {
-        TopTools_DataMapOfShapeInteger faceColor;
+        FaceIndexMap faceColor;
         std::vector<Quantity_ColorRGBA> palette;
         collectFaceColors(leaf, faceColor, palette);
         const uint32_t instanceColor = packColor(toSrgb(leaf.color));
