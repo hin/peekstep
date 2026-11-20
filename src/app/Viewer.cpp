@@ -79,11 +79,22 @@ void Viewer::initWindow()
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr; // no imgui.ini files next to the user's STEP files
     ImGui::StyleColorsDark();
+    // ImGui works in window coordinates. Where those are already scaled
+    // logical points (macOS Retina, Wayland), the framebuffer is larger than
+    // the window and the backend handles the extra pixels itself, so only the
+    // part of the content scale not covered by that ratio is applied here.
+    // On Windows and X11 the two sizes match and the full scale is used.
     float xscale = 1, yscale = 1;
     glfwGetWindowContentScale(window_, &xscale, &yscale);
+    int winW = 0, winH = 0, fbW = 0, fbH = 0;
+    glfwGetWindowSize(window_, &winW, &winH);
+    glfwGetFramebufferSize(window_, &fbW, &fbH);
+    float uiScale = xscale;
+    if (winW > 0 && fbW > winW)
+        uiScale = xscale * float(winW) / float(fbW);
     ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(xscale);
-    style.FontScaleDpi = xscale;
+    style.ScaleAllSizes(uiScale);
+    style.FontScaleDpi = uiScale;
     style.WindowRounding = 4.0f;
 
     // Installs ImGui's GLFW callbacks, chaining to the ones set above.
