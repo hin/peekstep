@@ -1,0 +1,23 @@
+{
+  "name": "peekstep",
+  "version-string": "0.1.0",
+  "description": "A fast-starting STEP file viewer",
+  "license": "BSD-2-Clause",
+  "builtin-baseline": "74f5ea45ca78988784b810ad9bbb148ea7ff76d8",
+  "dependencies": [
+    "glfw3",
+    {
+      "name": "imgui",
+      "features": [ "glfw-binding", "vulkan-binding" ]
+    },
+    {
+      "name": "opencascade",
+      "default-features": false
+    },
+    {
+      "name": "glslang",
+      "host": true,
+      "features": [ "tools" ]
+    }
+  ]
+}
