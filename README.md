@@ -41,6 +41,10 @@ vcpkg builds all dependencies statically, so the result is a single
 executable. The first build compiles OpenCASCADE and takes a while; later
 builds reuse it.
 
+Your vcpkg checkout must be at least as new as the `builtin-baseline` in
+`vcpkg.json`. Errors like "no version database entry for ..." mean it is too
+old: run `git pull` in the vcpkg folder, then its bootstrap script.
+
 ```
 cmake --preset <linux|mingw|macos>
 cmake --build --preset <linux|mingw|macos>
@@ -66,7 +70,8 @@ The executable still uses the system's C library, X11 and Vulkan loader
 From an MSYS2 UCRT64 shell:
 
 ```
-pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+pacman -S --needed git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake \
+    mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf
 export VCPKG_ROOT=/c/path/to/vcpkg
 cmake --preset mingw
 cmake --build --preset mingw

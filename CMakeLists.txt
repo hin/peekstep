@@ -49,7 +49,7 @@ target_link_libraries(peekstep PRIVATE
   glfw
   Vulkan::Vulkan
   ${PEEKSTEP_OCCT_STEP}
-  TKXCAF TKLCAF TKCAF TKMesh TKShHealing TKBRep TKTopAlgo TKG3d TKMath TKernel
+  TKXSBase TKXCAF TKLCAF TKCAF TKMesh TKShHealing TKBRep TKTopAlgo TKG3d TKMath TKernel
 )
 
 if(MSVC)
