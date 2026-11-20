@@ -1,2 +1,2 @@
 # peekstep
-Quick step file viewe
+Quick step file viewer
