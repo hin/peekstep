@@ -536,10 +536,10 @@ void Renderer::createPipeline()
     check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &ci, nullptr, &pipeline_), "vkCreateGraphicsPipelines");
 
     // See-through surfaces (KiCad solder mask and silkscreen) blend over what
-    // is behind them. They test depth against the opaque surfaces but do not
-    // write it, so see-through layers do not hide each other. They are not
-    // sorted; with similar colors (top and bottom mask) the order hardly shows.
-    depth.depthWriteEnable = VK_FALSE;
+    // is behind them. They are not sorted, so they also write depth: then a
+    // mask drawn after the silkscreen on top of it cannot wash the silkscreen
+    // out. The cost is that a see-through surface drawn first can hide one
+    // behind it, which on a board is mostly hidden by the opaque core anyway.
     blendAttachment.blendEnable = VK_TRUE;
     blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;

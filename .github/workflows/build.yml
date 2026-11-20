@@ -72,13 +72,26 @@ jobs:
           fi
           mkdir -p "$RUNNER_TEMP/vcpkg-cache"
 
+      # vcpkg puts a hash of the compiler into every package ID, so a runner
+      # image with a new compiler (or an MSYS2 gcc update) rebuilds everything.
+      # Key the cache on the image and the compiler version, so each new
+      # toolchain rebuilds once and is then saved.
+      - name: Identify toolchain
+        id: toolchain
+        run: |
+          cxx=c++
+          [ "$RUNNER_OS" = "Windows" ] && cxx=g++
+          version=$("$cxx" --version | head -n 1)
+          echo "Image: ${ImageOS:-unknown} ${ImageVersion:-unknown}; compiler: $version"
+          echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}-$(printf '%s' "$version" | cksum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
       # Building OpenCASCADE takes a long time; reuse built packages between runs.
       - name: Restore vcpkg packages
         id: vcpkg-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ steps.toolchain.outputs.key }}
           restore-keys: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
 
       - name: Configure
@@ -90,7 +103,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ steps.toolchain.outputs.key }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
