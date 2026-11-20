@@ -36,11 +36,15 @@ struct Model {
 
     size_t parts = 0;
     size_t faces = 0;
+    size_t unmeshedFaces = 0; // faces the mesher could not triangulate
+    size_t healedFaces = 0;   // faces that needed shape healing to mesh
     std::vector<ColorInfo> colors;
     std::vector<MaterialInfo> materials;
 
-    double readSeconds = 0;
+    double parseSeconds = 0;    // reading the STEP text
+    double transferSeconds = 0; // converting STEP entities to shapes, colors and names
     double meshSeconds = 0;
+    double buildSeconds = 0;    // vertex/index buffers, colors, materials
 };
 
 // Progress shared between the loading thread and the UI.
