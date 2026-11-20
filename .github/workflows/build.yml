@@ -23,7 +23,7 @@ jobs:
             preset: linux
             shell: bash
           - name: macOS
-            os: macos-14
+            os: macos-latest
             preset: macos
             shell: bash
           - name: Windows (MSYS2 UCRT64)
