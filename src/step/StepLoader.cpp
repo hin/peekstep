@@ -12,6 +12,7 @@
 #include <Precision.hxx>
 #include <Bnd_Box.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include <Interface_Static.hxx>
 #include <Poly_Triangulation.hxx>
 #include <Quantity_Color.hxx>
 #include <Quantity_ColorRGBA.hxx>
@@ -281,7 +282,10 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     reader.SetPropsMode(false);
     reader.SetGDTMode(false);
     reader.SetSHUOMode(false);
-
+    // Skip marking smooth edges after conversion. It walks every edge of
+    // every face on one thread, and the flags are only used for edge
+    // display, which Peekstep does not do.
+    Interface_Static::SetRVal("read.encoderegularity.angle", 0.0);
 
     if (reader.ReadFile(path.c_str()) != IFSelect_RetDone)
         throw std::runtime_error("Could not read STEP file");
