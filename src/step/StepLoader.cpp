@@ -2,6 +2,7 @@
 #include "step/StepLoader.h"
 
 #include <BRepBndLib.hxx>
+#include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_Context.hxx>
 #include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
 #include <BRepMesh_FaceDiscret.hxx>
@@ -271,8 +272,29 @@ void appendFace(const TopoDS_Face& original, const TopLoc_Location& instanceLoc,
         model.indices.push_back(base + n3 - 1);
     }
 
+    // Prefer the exact surface normal at each node. Averaging triangle
+    // normals per face makes the shading break where smooth faces meet and
+    // along seams inside a face (whose nodes are duplicated), which shows as
+    // visible lines on balls and cylinders.
+    const bool surfaceNormals = tri->HasUVNodes();
+    if (surfaceNormals)
+        BRepLib_ToolTriangulatedShape::ComputeNormals(face, tri);
+
     for (int i = 0; i < nbNodes; ++i) {
         gp_Vec n = normals[size_t(i)];
+        if (surfaceNormals && tri->HasNormals()) {
+            gp_Dir sn = tri->Normal(i + 1);
+            sn.Transform(trsf);
+            // Normals follow the surface; flip to match the face's side.
+            if (reversed)
+                sn.Reverse();
+            // Guard against faces whose orientation disagrees with their
+            // triangles; keep the triangles' side in that case.
+            gp_Vec sv(sn);
+            if (n.Magnitude() > 0 && sv.Dot(n) < 0)
+                sv.Reverse();
+            n = sv;
+        }
         const double len = n.Magnitude();
         if (len > 0)
             n /= len;
