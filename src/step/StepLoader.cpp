@@ -7,6 +7,10 @@
 #include <BRepMesh_FaceDiscret.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
+#include <BRepTools_WireExplorer.hxx>
+#include <Geom2d_Curve.hxx>
+#include <Geom_Surface.hxx>
+#include <gp_Pnt2d.hxx>
 #include <ShapeFix_Face.hxx>
 #include <ShapeFix_Wire.hxx>
 #include <Precision.hxx>
@@ -92,6 +96,55 @@ void addMissingPCurves(const TopoDS_Shape& shape)
             fix.FixEdgeCurves();
         }
     }
+}
+
+// True if a face on a closed surface (sphere, cylinder, torus...) crosses
+// the surface's seam without a seam edge, which shape healing would have
+// added. Its edge curves then don't join up in the surface's (u, v) space,
+// and the mesher fills the wrong region, leaving holes in the part. Example:
+// a SolidWorks ball split into two hemispheres along a meridian.
+bool lacksSeam(const TopoDS_Face& face)
+{
+    TopLoc_Location loc;
+    const Handle(Geom_Surface)& surface = BRep_Tool::Surface(face, loc);
+    if (surface.IsNull() || !(surface->IsUClosed() || surface->IsVClosed()))
+        return false;
+
+    const TopoDS_Face fwd = TopoDS::Face(face.Oriented(TopAbs_FORWARD));
+    for (TopExp_Explorer e(fwd, TopAbs_EDGE); e.More(); e.Next())
+        if (BRep_Tool::IsClosed(TopoDS::Edge(e.Current()), fwd))
+            return false; // has a seam edge already
+
+    // Allow gaps up to a small fraction of the parameter range.
+    double u0, u1, v0, v1;
+    surface->Bounds(u0, u1, v0, v1);
+    const double tolU = surface->IsUClosed() ? 1e-3 * (u1 - u0) : Precision::Infinite();
+    const double tolV = surface->IsVClosed() ? 1e-3 * (v1 - v0) : Precision::Infinite();
+
+    for (TopExp_Explorer w(fwd, TopAbs_WIRE); w.More(); w.Next()) {
+        bool first = true;
+        gp_Pnt2d start, prevEnd;
+        for (BRepTools_WireExplorer e(TopoDS::Wire(w.Current()), fwd); e.More(); e.Next()) {
+            const TopoDS_Edge& edge = e.Current();
+            double f, l;
+            const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, fwd, f, l);
+            if (pc.IsNull())
+                return false; // nothing to compare; leave it to the mesher
+            gp_Pnt2d a = pc->Value(f), b = pc->Value(l);
+            if (edge.Orientation() == TopAbs_REVERSED)
+                std::swap(a, b);
+            if (first) {
+                start = a;
+                first = false;
+            } else if (std::abs(a.X() - prevEnd.X()) > tolU || std::abs(a.Y() - prevEnd.Y()) > tolV) {
+                return true;
+            }
+            prevEnd = b;
+        }
+        if (!first && (std::abs(start.X() - prevEnd.X()) > tolU || std::abs(start.Y() - prevEnd.Y()) > tolV))
+            return true;
+    }
+    return false;
 }
 
 double secondsSince(Clock::time_point t0)
@@ -380,9 +433,10 @@ Model loadStep(const std::string& path, LoadProgress* progress)
     }
     OSD_Parallel::For(0, int(small.size()), [&](int i) { meshPart(*small[size_t(i)], false); });
 
-    // A few faces may still fail to mesh: heal just those faces and mesh
-    // them again. Parts are handled in parallel, faces of one part in
-    // sequence because they share edges.
+    // A few faces may still fail to mesh, or mesh wrongly because they lack
+    // a seam edge: heal just those faces and mesh them again. Parts are
+    // handled in parallel, faces of one part in sequence because they share
+    // edges.
     std::vector<std::vector<TopoDS_Face>> unmeshed(jobs.size());
     for (size_t i = 0; i < jobs.size(); ++i) {
         FaceIndexMap seen;
@@ -390,7 +444,7 @@ Model loadStep(const std::string& path, LoadProgress* progress)
             const TopoDS_Face& face = TopoDS::Face(ex.Current());
             TopLoc_Location loc;
             const Handle(Poly_Triangulation)& tri = BRep_Tool::Triangulation(face, loc);
-            if (!tri.IsNull() && tri->NbTriangles() > 0)
+            if (!tri.IsNull() && tri->NbTriangles() > 0 && !lacksSeam(face))
                 continue;
             const TopoDS_Shape key = face.Located(TopLoc_Location()).Oriented(TopAbs_FORWARD);
             if (!seen.IsBound(key)) {
