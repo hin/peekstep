@@ -27,6 +27,11 @@ void setWindowIdentityHints();
 // provide it itself (Linux X11). Windows uses the icon in the exe, macOS the
 // one in the app bundle, Wayland the one named by the menu entry.
 void setWindowIcon(GLFWwindow* window);
+
+// Windows: fills the new window with the viewer's background color, so it
+// isn't white while Vulkan starts. Does nothing elsewhere.
+void paintWindowBackground(GLFWwindow* window, unsigned char r, unsigned char g, unsigned char b);
+
 // macOS: shows an error in an alert window. Does nothing elsewhere (Windows
 // already shows a message box, Linux prints to the terminal).
 void showErrorDialog(const std::string& text);

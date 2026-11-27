@@ -2,6 +2,7 @@
 #include "app/Viewer.h"
 
 #include "platform/Platform.h"
+#include "platform/Timing.h"
 #include "render/Renderer.h"
 
 #include <GLFW/glfw3.h>
@@ -57,6 +58,17 @@ Viewer::~Viewer()
 
 void Viewer::initWindow()
 {
+    // The first Vulkan call loads the GPU drivers, which takes about half a
+    // second on Windows. Do that while the window is being created.
+    struct JoinOnExit {
+        std::thread t;
+        ~JoinOnExit()
+        {
+            if (t.joinable())
+                t.join();
+        }
+    } vulkanWarmUp{std::thread(warmUpVulkanLoader)};
+
     // Inside an app bundle GLFW would change to Contents/Resources, which
     // breaks relative file names given on the command line.
     glfwInitHint(GLFW_COCOA_CHDIR_RESOURCES, GLFW_FALSE);
@@ -64,11 +76,14 @@ void Viewer::initWindow()
     useLinkedVulkanLoader();
     if (!glfwInit())
         throw std::runtime_error("Could not initialize the window system");
+    timing::mark("glfwInit");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     setWindowIdentityHints();
     window_ = glfwCreateWindow(1280, 800, "Peekstep", nullptr, nullptr);
     if (!window_)
         throw std::runtime_error("Could not create a window");
+    timing::mark("glfwCreateWindow");
+    paintWindowBackground(window_, 41, 43, 48); // the renderer's clear color
     setWindowIcon(window_);
     glfwSetWindowUserPointer(window_, this);
     glfwSetDropCallback(window_, onDrop);
@@ -99,6 +114,9 @@ void Viewer::initWindow()
 
     // Installs ImGui's GLFW callbacks, chaining to the ones set above.
     ImGui_ImplGlfw_InitForVulkan(window_, true);
+    timing::mark("ImGui context and GLFW backend");
+    vulkanWarmUp.t.join();
+    timing::mark("wait for Vulkan loader (started at glfwInit)");
     renderer_ = std::make_unique<Renderer>(window_);
 }
 
@@ -377,6 +395,7 @@ int Viewer::run()
     updateTitle();
 
     int idleFrames = 0;
+    bool firstFrame = true;
     while (!glfwWindowShouldClose(window_)) {
         // Redraw continuously only while something moves; otherwise sleep
         // until there is input. A few extra frames let ImGui settle hovers.
@@ -407,6 +426,10 @@ int Viewer::run()
         glfwGetFramebufferSize(window_, &w, &h);
         const float aspect = h > 0 ? float(w) / float(h) : 1.0f;
         renderer_->drawFrame(camera_.viewProj(aspect), camera_.forward());
+        if (firstFrame) {
+            timing::mark("first frame (events, UI, draw, present)");
+            firstFrame = false;
+        }
 
         const ImGuiIO& io = ImGui::GetIO();
         const bool active = busy || io.MouseDelta.x != 0 || io.MouseDelta.y != 0 || io.MouseWheel != 0

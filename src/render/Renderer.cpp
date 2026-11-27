@@ -1,6 +1,7 @@
 // Peekstep - Vulkan renderer for the model and the ImGui overlay.
 #include "render/Renderer.h"
 
+#include "platform/Timing.h"
 #include "step/StepLoader.h"
 
 #include <GLFW/glfw3.h>
@@ -12,6 +13,7 @@
 #include "mesh_vert.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,6 +33,13 @@ void checkImGui(VkResult r)
 {
     if (r != VK_SUCCESS)
         std::fprintf(stderr, "peekstep: ImGui Vulkan error %d\n", int(r));
+}
+
+std::string lower(std::string s)
+{
+    for (char& c : s)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+    return s;
 }
 
 bool hasExtension(const std::vector<VkExtensionProperties>& exts, const char* name)
@@ -62,13 +71,23 @@ Renderer::Renderer(GLFWwindow* window)
 {
     createInstance();
     check(glfwCreateWindowSurface(instance_, window_, nullptr, &surface_), "glfwCreateWindowSurface");
+    timing::mark("glfwCreateWindowSurface");
     pickDevice();
+    timing::mark("pick GPU (enumerate devices, queues, formats)");
+    if (timing::enabled())
+        std::fprintf(stderr, "timing: using GPU %s\n", deviceName_);
     createDevice();
+    timing::mark("vkCreateDevice");
     createRenderPass();
+    timing::mark("render pass");
     createSwapchain();
+    timing::mark("swapchain");
     createPipeline();
+    timing::mark("mesh pipelines");
     createFrames();
+    timing::mark("frame resources");
     initImGui();
+    timing::mark("ImGui Vulkan backend (incl. pipeline, fonts)");
 }
 
 Renderer::~Renderer()
@@ -109,10 +128,17 @@ void useLinkedVulkanLoader()
 #endif
 }
 
+void warmUpVulkanLoader()
+{
+    uint32_t count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+}
+
 int printVulkanInfo()
 {
     uint32_t version = 0;
     vkEnumerateInstanceVersion(&version);
+    timing::mark("vkEnumerateInstanceVersion");
     std::printf("Vulkan loader: %u.%u.%u\n", VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version),
                 VK_API_VERSION_PATCH(version));
 
@@ -120,6 +146,7 @@ int printVulkanInfo()
     vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> available(count);
     vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data());
+    timing::mark("vkEnumerateInstanceExtensionProperties");
     std::printf("Instance extensions:\n");
     for (const VkExtensionProperties& e : available)
         std::printf("  %s\n", e.extensionName);
@@ -134,6 +161,7 @@ int printVulkanInfo()
     ci.ppEnabledExtensionNames = exts.data();
     VkInstance instance = VK_NULL_HANDLE;
     const VkResult r = vkCreateInstance(&ci, nullptr, &instance);
+    timing::mark("vkCreateInstance");
     int status = 0;
     if (r != VK_SUCCESS) {
         std::printf("vkCreateInstance failed: %d (no Vulkan driver found?)\n", int(r));
@@ -143,7 +171,8 @@ int printVulkanInfo()
         vkEnumeratePhysicalDevices(instance, &n, nullptr);
         std::vector<VkPhysicalDevice> devices(n);
         vkEnumeratePhysicalDevices(instance, &n, devices.data());
-        std::printf("GPUs: %u\n", n);
+        timing::mark("vkEnumeratePhysicalDevices");
+        std::printf("GPUs (Peekstep uses the first one, or the one PEEKSTEP_GPU names): %u\n", n);
         for (VkPhysicalDevice d : devices) {
             VkPhysicalDeviceProperties p{};
             vkGetPhysicalDeviceProperties(d, &p);
@@ -151,10 +180,12 @@ int printVulkanInfo()
                         VK_API_VERSION_MINOR(p.apiVersion));
         }
         vkDestroyInstance(instance, nullptr);
+        timing::mark("vkDestroyInstance");
     }
 
     useLinkedVulkanLoader();
     if (glfwInit()) {
+        timing::mark("glfwInit");
         std::printf("GLFW Vulkan support: %s\n", glfwVulkanSupported() ? "yes" : "no");
         glfwTerminate();
     } else {
@@ -167,6 +198,7 @@ void Renderer::createInstance()
 {
     uint32_t glfwCount = 0;
     const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwCount);
+    timing::mark("glfwGetRequiredInstanceExtensions");
     if (!glfwExts)
         throw std::runtime_error("Vulkan is not available on this system");
     std::vector<const char*> exts(glfwExts, glfwExts + glfwCount);
@@ -175,6 +207,7 @@ void Renderer::createInstance()
     vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> available(count);
     vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data());
+    timing::mark("vkEnumerateInstanceExtensionProperties");
 
     VkInstanceCreateFlags flags = 0;
     // MoltenVK on macOS is a "portability" implementation and must be opted into.
@@ -204,6 +237,7 @@ void Renderer::createInstance()
     ci.enabledLayerCount = uint32_t(layers.size());
     ci.ppEnabledLayerNames = layers.data();
     check(vkCreateInstance(&ci, nullptr, &instance_), "vkCreateInstance");
+    timing::mark("vkCreateInstance");
 
     if (validation) {
         auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
@@ -225,7 +259,17 @@ void Renderer::pickDevice()
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance_, &count, devices.data());
 
-    int bestScore = -1;
+    // Use the first suitable GPU in the order the system lists them. On
+    // Windows that follows the per-app choice in Settings > Display > Graphics
+    // and usually puts the GPU that drives the screen first; on Linux, Mesa
+    // puts the default GPU first. Picking a discrete GPU instead can cost
+    // seconds on laptops, where it is powered off and its frames have to be
+    // copied to the integrated GPU's screen. PEEKSTEP_GPU=<part of the name>
+    // picks another one.
+    const char* wantedEnv = std::getenv("PEEKSTEP_GPU");
+    const std::string wanted = lower(wantedEnv ? wantedEnv : "");
+    bool matched = false;
+    bool pickedSoftware = false;
     for (VkPhysicalDevice pd : devices) {
         uint32_t qCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qCount, nullptr);
@@ -253,19 +297,25 @@ void Renderer::pickDevice()
 
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(pd, &props);
-        int score = 1;
-        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-            score = 3;
-        else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-            score = 2;
-        if (score > bestScore) {
-            bestScore = score;
-            physical_ = pd;
-            queueFamily_ = uint32_t(family);
-            portabilitySubset_ = hasExtension(exts, kPortabilitySubset);
-            std::snprintf(deviceName_, sizeof(deviceName_), "%s", props.deviceName);
+        const bool isWanted = !wanted.empty() && lower(props.deviceName).find(wanted) != std::string::npos;
+        // A software renderer (such as llvmpipe) is only a last resort.
+        const bool isSoftware = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        if (physical_ && !isWanted && !(pickedSoftware && !isSoftware))
+            continue;
+        physical_ = pd;
+        pickedSoftware = isSoftware;
+        queueFamily_ = uint32_t(family);
+        portabilitySubset_ = hasExtension(exts, kPortabilitySubset);
+        std::snprintf(deviceName_, sizeof(deviceName_), "%s", props.deviceName);
+        if (isWanted) {
+            matched = true;
+            break;
         }
+        if (wanted.empty() && !isSoftware)
+            break;
     }
+    if (!wanted.empty() && !matched)
+        std::fprintf(stderr, "peekstep: no GPU matching PEEKSTEP_GPU=%s, using %s\n", wantedEnv, deviceName_);
     if (!physical_)
         throw std::runtime_error("No Vulkan GPU that can draw to a window was found");
 

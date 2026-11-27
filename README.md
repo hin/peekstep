@@ -92,6 +92,7 @@ you double-click a STEP file.
 peekstep [file.step]
 peekstep --info file.step   # print parts, colors and timings, no window
 peekstep --vulkan-info      # print the Vulkan drivers and GPUs found (for troubleshooting)
+peekstep --timing           # print how long each startup step takes
 ```
 
 You can also drop a file on the window.
@@ -107,6 +108,11 @@ You can also drop a file on the window.
 | Tab | Hide or show the panel |
 | F1 | About Peekstep |
 | Esc | Quit |
+
+Peekstep draws on the first GPU the system lists, which on Windows follows
+the app's choice under Settings > System > Display > Graphics. To use another
+one, set `PEEKSTEP_GPU` to part of its name as `--vulkan-info` shows it, for
+example `PEEKSTEP_GPU=nvidia`.
 
 Set `PEEKSTEP_VALIDATION=1` to turn on the Vulkan validation layer.
 
