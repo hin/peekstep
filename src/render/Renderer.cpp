@@ -1,6 +1,7 @@
 // Peekstep - Vulkan renderer for the model and the ImGui overlay.
 #include "render/Renderer.h"
 
+#include "platform/Timing.h"
 #include "step/StepLoader.h"
 
 #include <GLFW/glfw3.h>
@@ -62,13 +63,21 @@ Renderer::Renderer(GLFWwindow* window)
 {
     createInstance();
     check(glfwCreateWindowSurface(instance_, window_, nullptr, &surface_), "glfwCreateWindowSurface");
+    timing::mark("glfwCreateWindowSurface");
     pickDevice();
+    timing::mark("pick GPU (enumerate devices, queues, formats)");
     createDevice();
+    timing::mark("vkCreateDevice");
     createRenderPass();
+    timing::mark("render pass");
     createSwapchain();
+    timing::mark("swapchain");
     createPipeline();
+    timing::mark("mesh pipelines");
     createFrames();
+    timing::mark("frame resources");
     initImGui();
+    timing::mark("ImGui Vulkan backend (incl. pipeline, fonts)");
 }
 
 Renderer::~Renderer()
@@ -113,6 +122,7 @@ int printVulkanInfo()
 {
     uint32_t version = 0;
     vkEnumerateInstanceVersion(&version);
+    timing::mark("vkEnumerateInstanceVersion");
     std::printf("Vulkan loader: %u.%u.%u\n", VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version),
                 VK_API_VERSION_PATCH(version));
 
@@ -120,6 +130,7 @@ int printVulkanInfo()
     vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> available(count);
     vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data());
+    timing::mark("vkEnumerateInstanceExtensionProperties");
     std::printf("Instance extensions:\n");
     for (const VkExtensionProperties& e : available)
         std::printf("  %s\n", e.extensionName);
@@ -134,6 +145,7 @@ int printVulkanInfo()
     ci.ppEnabledExtensionNames = exts.data();
     VkInstance instance = VK_NULL_HANDLE;
     const VkResult r = vkCreateInstance(&ci, nullptr, &instance);
+    timing::mark("vkCreateInstance");
     int status = 0;
     if (r != VK_SUCCESS) {
         std::printf("vkCreateInstance failed: %d (no Vulkan driver found?)\n", int(r));
@@ -143,6 +155,7 @@ int printVulkanInfo()
         vkEnumeratePhysicalDevices(instance, &n, nullptr);
         std::vector<VkPhysicalDevice> devices(n);
         vkEnumeratePhysicalDevices(instance, &n, devices.data());
+        timing::mark("vkEnumeratePhysicalDevices");
         std::printf("GPUs: %u\n", n);
         for (VkPhysicalDevice d : devices) {
             VkPhysicalDeviceProperties p{};
@@ -151,10 +164,12 @@ int printVulkanInfo()
                         VK_API_VERSION_MINOR(p.apiVersion));
         }
         vkDestroyInstance(instance, nullptr);
+        timing::mark("vkDestroyInstance");
     }
 
     useLinkedVulkanLoader();
     if (glfwInit()) {
+        timing::mark("glfwInit");
         std::printf("GLFW Vulkan support: %s\n", glfwVulkanSupported() ? "yes" : "no");
         glfwTerminate();
     } else {
@@ -167,6 +182,7 @@ void Renderer::createInstance()
 {
     uint32_t glfwCount = 0;
     const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwCount);
+    timing::mark("glfwGetRequiredInstanceExtensions");
     if (!glfwExts)
         throw std::runtime_error("Vulkan is not available on this system");
     std::vector<const char*> exts(glfwExts, glfwExts + glfwCount);
@@ -175,6 +191,7 @@ void Renderer::createInstance()
     vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
     std::vector<VkExtensionProperties> available(count);
     vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data());
+    timing::mark("vkEnumerateInstanceExtensionProperties");
 
     VkInstanceCreateFlags flags = 0;
     // MoltenVK on macOS is a "portability" implementation and must be opted into.
@@ -204,6 +221,7 @@ void Renderer::createInstance()
     ci.enabledLayerCount = uint32_t(layers.size());
     ci.ppEnabledLayerNames = layers.data();
     check(vkCreateInstance(&ci, nullptr, &instance_), "vkCreateInstance");
+    timing::mark("vkCreateInstance");
 
     if (validation) {
         auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(

@@ -3,6 +3,7 @@
 
 #include "app/Viewer.h"
 #include "platform/Platform.h"
+#include "platform/Timing.h"
 #include "render/Renderer.h"
 
 #include <cstdio>
@@ -108,6 +109,7 @@ const char* kUsage = "Usage: peekstep [file.step]\n"
                      "\n"
                      "  --info         load the file, print what is in it and exit (no window)\n"
                      "  --vulkan-info  print the Vulkan drivers and GPUs that were found\n"
+                     "  --timing       print how long each startup step takes\n"
                      "  -h, --help     show this help\n"
                      "  -v, --version  show the version";
 
@@ -116,6 +118,12 @@ const char* kUsage = "Usage: peekstep [file.step]\n"
 int main(int argc, char** argv)
 {
     const std::vector<std::string> args = utf8Args(argc, argv);
+    bool timingOn = false;
+    for (size_t i = 1; i < args.size(); ++i)
+        timingOn = timingOn || args[i] == "--timing";
+    peekstep::timing::start(timingOn);
+    if (timingOn)
+        attachConsole();
     std::string file;
     bool infoOnly = false;
     for (size_t i = 1; i < args.size(); ++i) {
@@ -132,6 +140,8 @@ int main(int argc, char** argv)
             attachConsole();
             return peekstep::printVulkanInfo();
         }
+        if (a == "--timing")
+            continue;
         if (a == "--info") {
             infoOnly = true;
             continue;

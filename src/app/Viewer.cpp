@@ -2,6 +2,7 @@
 #include "app/Viewer.h"
 
 #include "platform/Platform.h"
+#include "platform/Timing.h"
 #include "render/Renderer.h"
 
 #include <GLFW/glfw3.h>
@@ -64,11 +65,13 @@ void Viewer::initWindow()
     useLinkedVulkanLoader();
     if (!glfwInit())
         throw std::runtime_error("Could not initialize the window system");
+    timing::mark("glfwInit");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     setWindowIdentityHints();
     window_ = glfwCreateWindow(1280, 800, "Peekstep", nullptr, nullptr);
     if (!window_)
         throw std::runtime_error("Could not create a window");
+    timing::mark("glfwCreateWindow");
     setWindowIcon(window_);
     glfwSetWindowUserPointer(window_, this);
     glfwSetDropCallback(window_, onDrop);
@@ -99,6 +102,7 @@ void Viewer::initWindow()
 
     // Installs ImGui's GLFW callbacks, chaining to the ones set above.
     ImGui_ImplGlfw_InitForVulkan(window_, true);
+    timing::mark("ImGui context and GLFW backend");
     renderer_ = std::make_unique<Renderer>(window_);
 }
 
@@ -377,6 +381,7 @@ int Viewer::run()
     updateTitle();
 
     int idleFrames = 0;
+    bool firstFrame = true;
     while (!glfwWindowShouldClose(window_)) {
         // Redraw continuously only while something moves; otherwise sleep
         // until there is input. A few extra frames let ImGui settle hovers.
@@ -407,6 +412,10 @@ int Viewer::run()
         glfwGetFramebufferSize(window_, &w, &h);
         const float aspect = h > 0 ? float(w) / float(h) : 1.0f;
         renderer_->drawFrame(camera_.viewProj(aspect), camera_.forward());
+        if (firstFrame) {
+            timing::mark("first frame (events, UI, draw, present)");
+            firstFrame = false;
+        }
 
         const ImGuiIO& io = ImGui::GetIO();
         const bool active = busy || io.MouseDelta.x != 0 || io.MouseDelta.y != 0 || io.MouseWheel != 0
