@@ -1,6 +1,6 @@
 {
   "name": "peekstep",
-  "version-string": "0.1.1",
+  "version-string": "0.1.2",
   "description": "A fast-starting STEP file viewer",
   "license": "BSD-2-Clause",
   "builtin-baseline": "74f5ea45ca78988784b810ad9bbb148ea7ff76d8",
