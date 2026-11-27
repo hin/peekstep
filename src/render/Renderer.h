@@ -19,6 +19,10 @@ struct Model;
 // find the loader bundled in Peekstep.app.
 void useLinkedVulkanLoader();
 
+// Makes the Vulkan loader find and load the GPU drivers, which the first
+// Vulkan call does. Safe to run on another thread before anything else uses Vulkan.
+void warmUpVulkanLoader();
+
 // --vulkan-info: prints what the Vulkan loader finds (drivers, GPUs).
 // Returns 0 if a Vulkan instance could be created.
 int printVulkanInfo();

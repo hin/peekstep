@@ -58,6 +58,17 @@ Viewer::~Viewer()
 
 void Viewer::initWindow()
 {
+    // The first Vulkan call loads the GPU drivers, which takes about half a
+    // second on Windows. Do that while the window is being created.
+    struct JoinOnExit {
+        std::thread t;
+        ~JoinOnExit()
+        {
+            if (t.joinable())
+                t.join();
+        }
+    } vulkanWarmUp{std::thread(warmUpVulkanLoader)};
+
     // Inside an app bundle GLFW would change to Contents/Resources, which
     // breaks relative file names given on the command line.
     glfwInitHint(GLFW_COCOA_CHDIR_RESOURCES, GLFW_FALSE);
@@ -72,6 +83,7 @@ void Viewer::initWindow()
     if (!window_)
         throw std::runtime_error("Could not create a window");
     timing::mark("glfwCreateWindow");
+    paintWindowBackground(window_, 41, 43, 48); // the renderer's clear color
     setWindowIcon(window_);
     glfwSetWindowUserPointer(window_, this);
     glfwSetDropCallback(window_, onDrop);
@@ -103,6 +115,8 @@ void Viewer::initWindow()
     // Installs ImGui's GLFW callbacks, chaining to the ones set above.
     ImGui_ImplGlfw_InitForVulkan(window_, true);
     timing::mark("ImGui context and GLFW backend");
+    vulkanWarmUp.t.join();
+    timing::mark("wait for Vulkan loader (started at glfwInit)");
     renderer_ = std::make_unique<Renderer>(window_);
 }
 

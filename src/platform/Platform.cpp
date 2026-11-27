@@ -4,6 +4,10 @@
 #include <iterator>
 
 #include <GLFW/glfw3.h>
+#ifdef _WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#endif
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include "platform/WindowIconData.h"
@@ -75,6 +79,31 @@ void setWindowIcon(GLFWwindow* window)
     glfwSetWindowIcon(window, int(std::size(images)), images);
 #else
     (void)window;
+#endif
+}
+
+void paintWindowBackground(GLFWwindow* window, unsigned char r, unsigned char g, unsigned char b)
+{
+#ifdef _WIN32
+    // GLFW ignores WM_ERASEBKGND and nothing handles WM_PAINT until the first
+    // frame, so draw straight into the window once.
+    HWND hwnd = glfwGetWin32Window(window);
+    if (!hwnd)
+        return;
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    if (HDC dc = GetDC(hwnd)) {
+        HBRUSH brush = CreateSolidBrush(RGB(r, g, b));
+        FillRect(dc, &rect, brush);
+        DeleteObject(brush);
+        ReleaseDC(hwnd, dc);
+        GdiFlush();
+    }
+#else
+    (void)window;
+    (void)r;
+    (void)g;
+    (void)b;
 #endif
 }
 

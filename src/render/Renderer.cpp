@@ -128,6 +128,12 @@ void useLinkedVulkanLoader()
 #endif
 }
 
+void warmUpVulkanLoader()
+{
+    uint32_t count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+}
+
 int printVulkanInfo()
 {
     uint32_t version = 0;
