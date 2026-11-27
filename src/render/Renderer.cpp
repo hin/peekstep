@@ -13,6 +13,7 @@
 #include "mesh_vert.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,6 +33,13 @@ void checkImGui(VkResult r)
 {
     if (r != VK_SUCCESS)
         std::fprintf(stderr, "peekstep: ImGui Vulkan error %d\n", int(r));
+}
+
+std::string lower(std::string s)
+{
+    for (char& c : s)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+    return s;
 }
 
 bool hasExtension(const std::vector<VkExtensionProperties>& exts, const char* name)
@@ -66,6 +74,8 @@ Renderer::Renderer(GLFWwindow* window)
     timing::mark("glfwCreateWindowSurface");
     pickDevice();
     timing::mark("pick GPU (enumerate devices, queues, formats)");
+    if (timing::enabled())
+        std::fprintf(stderr, "timing: using GPU %s\n", deviceName_);
     createDevice();
     timing::mark("vkCreateDevice");
     createRenderPass();
@@ -156,7 +166,7 @@ int printVulkanInfo()
         std::vector<VkPhysicalDevice> devices(n);
         vkEnumeratePhysicalDevices(instance, &n, devices.data());
         timing::mark("vkEnumeratePhysicalDevices");
-        std::printf("GPUs: %u\n", n);
+        std::printf("GPUs (Peekstep uses the first one, or the one PEEKSTEP_GPU names): %u\n", n);
         for (VkPhysicalDevice d : devices) {
             VkPhysicalDeviceProperties p{};
             vkGetPhysicalDeviceProperties(d, &p);
@@ -243,7 +253,17 @@ void Renderer::pickDevice()
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance_, &count, devices.data());
 
-    int bestScore = -1;
+    // Use the first suitable GPU in the order the system lists them. On
+    // Windows that follows the per-app choice in Settings > Display > Graphics
+    // and usually puts the GPU that drives the screen first; on Linux, Mesa
+    // puts the default GPU first. Picking a discrete GPU instead can cost
+    // seconds on laptops, where it is powered off and its frames have to be
+    // copied to the integrated GPU's screen. PEEKSTEP_GPU=<part of the name>
+    // picks another one.
+    const char* wantedEnv = std::getenv("PEEKSTEP_GPU");
+    const std::string wanted = lower(wantedEnv ? wantedEnv : "");
+    bool matched = false;
+    bool pickedSoftware = false;
     for (VkPhysicalDevice pd : devices) {
         uint32_t qCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qCount, nullptr);
@@ -271,19 +291,25 @@ void Renderer::pickDevice()
 
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(pd, &props);
-        int score = 1;
-        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-            score = 3;
-        else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-            score = 2;
-        if (score > bestScore) {
-            bestScore = score;
-            physical_ = pd;
-            queueFamily_ = uint32_t(family);
-            portabilitySubset_ = hasExtension(exts, kPortabilitySubset);
-            std::snprintf(deviceName_, sizeof(deviceName_), "%s", props.deviceName);
+        const bool isWanted = !wanted.empty() && lower(props.deviceName).find(wanted) != std::string::npos;
+        // A software renderer (such as llvmpipe) is only a last resort.
+        const bool isSoftware = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+        if (physical_ && !isWanted && !(pickedSoftware && !isSoftware))
+            continue;
+        physical_ = pd;
+        pickedSoftware = isSoftware;
+        queueFamily_ = uint32_t(family);
+        portabilitySubset_ = hasExtension(exts, kPortabilitySubset);
+        std::snprintf(deviceName_, sizeof(deviceName_), "%s", props.deviceName);
+        if (isWanted) {
+            matched = true;
+            break;
         }
+        if (wanted.empty() && !isSoftware)
+            break;
     }
+    if (!wanted.empty() && !matched)
+        std::fprintf(stderr, "peekstep: no GPU matching PEEKSTEP_GPU=%s, using %s\n", wantedEnv, deviceName_);
     if (!physical_)
         throw std::runtime_error("No Vulkan GPU that can draw to a window was found");
 
